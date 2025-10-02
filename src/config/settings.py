@@ -45,7 +45,7 @@ class Settings:
         except ValueError as e:
             raise ValueError(f"Invalid numeric value in environment variables: {e}")
 
-        self.database_url = os.getenv('DATABASE_URL', 'sqlite:///social_agents.db')
+        self.database_url = os.getenv('DATABASE_URL', 'sqlite:///million_agents.db')
         self.log_level = os.getenv('LOG_LEVEL', 'INFO')
 
     def _validate_values(self):
