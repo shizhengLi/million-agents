@@ -7,7 +7,7 @@ import time
 import openai
 try:
     from src.config import Settings
-except ImportError:
+except ImportError:  # pragma: no cover
     from config import Settings
 from .base import BaseAgent
 

@@ -160,3 +160,40 @@ class TestConfig:
         # Should hide API key
         assert 'test-api-key-12345' not in settings_str
         assert '***' in settings_str
+
+    def test_config_short_api_key(self, mock_env_vars):
+        """Test string representation with short API key"""
+        from src.config.settings import Settings
+
+        # Reset singleton and set short API key
+        Settings._instance = None
+        os.environ['OPENAI_API_KEY'] = 'short'
+
+        settings = Settings()
+        settings_str = str(settings)
+
+        # Should handle short API key gracefully
+        assert 'short' not in settings_str
+        assert '***' in settings_str
+
+    def test_config_empty_api_key(self, mock_env_vars):
+        """Test configuration with empty API key"""
+        from src.config.settings import Settings
+
+        # Reset singleton and set empty API key
+        Settings._instance = None
+        os.environ['OPENAI_API_KEY'] = '   '  # Whitespace only
+
+        with pytest.raises(ValueError, match="Missing required environment variable"):
+            Settings()
+
+    def test_config_whitespace_api_key(self, mock_env_vars):
+        """Test configuration with whitespace-only API key"""
+        from src.config.settings import Settings
+
+        # Reset singleton and set whitespace API key
+        Settings._instance = None
+        os.environ['OPENAI_API_KEY'] = '\t\n  '  # Whitespace only
+
+        with pytest.raises(ValueError, match="Missing required environment variable"):
+            Settings()
