@@ -123,13 +123,18 @@ class TestBatchAgentManager:
         from src.agents.batch_manager import BatchAgentManager
 
         manager = BatchAgentManager()
-        manager.create_batch_agents(count=10)
+
+        # Create agents with specific personalities to ensure we have test data
+        manager.create_agent("FriendlyAgent1", personality="friendly")
+        manager.create_agent("FriendlyAgent2", personality="friendly")
+        manager.create_agent("AnalyticalAgent1", personality="analytical")
+        manager.create_agent("CreativeAgent1", personality="creative")
 
         friendly_agents = manager.get_agents_by_personality("friendly")
         analytical_agents = manager.get_agents_by_personality("analytical")
 
-        assert len(friendly_agents) > 0
-        assert len(analytical_agents) > 0
+        assert len(friendly_agents) == 2
+        assert len(analytical_agents) == 1
 
         for agent in friendly_agents:
             assert agent.personality == "friendly"

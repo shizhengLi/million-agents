@@ -591,3 +591,7 @@ class MemoryOptimizer:
             },
             'compression_stats': self.compression_stats.copy()
         }
+
+    def get_agent_count(self) -> int:
+        """Get total number of stored agents"""
+        return len(self.agent_storage)
