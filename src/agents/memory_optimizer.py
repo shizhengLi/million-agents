@@ -368,7 +368,8 @@ class MemoryOptimizer:
         # Calculate fragmentation based on overhead vs optimal size
         total_estimated_size = optimal_size + estimated_overhead
 
-        if total_estimated_size <= optimal_size:
+        # If overhead is negligible or negative (due to compaction), consider it non-fragmented
+        if estimated_overhead <= 0 or total_estimated_size <= optimal_size:
             return 0.0
 
         fragmentation = ((total_estimated_size - optimal_size) / total_estimated_size) * 100
@@ -513,15 +514,14 @@ class MemoryOptimizer:
                 if not agent_ids:
                     del self.interest_index[interest]
 
-            if agent_id in self.name_index:
-                # Find name to remove
-                name_to_remove = None
-                for name, stored_id in self.name_index.items():
-                    if stored_id == agent_id:
-                        name_to_remove = name
-                        break
-                if name_to_remove:
-                    del self.name_index[name_to_remove]
+            # Remove from name index if agent exists there
+            name_to_remove = None
+            for name, stored_id in self.name_index.items():
+                if stored_id == agent_id:
+                    name_to_remove = name
+                    break
+            if name_to_remove:
+                del self.name_index[name_to_remove]
 
             self.total_stored_agents -= 1
             return True

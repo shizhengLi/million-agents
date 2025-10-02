@@ -6,7 +6,7 @@
 
 ```bash
 # 克隆项目
-git clone <repository-url>
+git clone git@github.com:shizhengLi/million-agents.git
 cd million-agents
 
 # 安装依赖
@@ -256,7 +256,7 @@ print(f"添加 {len(agents)-1} 个好友关系耗时: {end_time - start_time:.2f
    ```bash
    # 检查 .env 文件中的 API 密钥
    cat .env | grep OPENAI_API_KEY
-
+   
    # 确保 API 密钥有效且配额充足
    ```
 

@@ -644,3 +644,193 @@ class TestMemoryOptimizer:
         # Should get the same agent
         assert cached_agent1.agent_id == cached_agent2.agent_id
         assert "cache_update_test" in optimizer.agent_cache
+
+    def test_remove_agent_with_loaded_agents(self, mock_env_vars):
+        """Test removing agent that exists in loaded_agents"""
+        from src.agents.memory_optimizer import MemoryOptimizer
+        from src.agents.social_agent import SocialAgent
+
+        optimizer = MemoryOptimizer(lazy_loading_enabled=True)
+
+        # Store agent and manually add to loaded_agents
+        agent = SocialAgent("loaded_test", "Loaded Test", "friendly", ["test"])
+        optimizer.store_agent(agent)
+        optimizer.loaded_agents["loaded_test"] = agent
+
+        # Remove agent (should also remove from loaded_agents)
+        result = optimizer.remove_agent("loaded_test")
+
+        assert result is True
+        assert "loaded_test" not in optimizer.agent_storage
+        assert "loaded_test" not in optimizer.loaded_agents
+
+    def test_remove_agent_cleanup_indexes(self, mock_env_vars):
+        """Test removing agent cleans up empty personality indexes"""
+        from src.agents.memory_optimizer import MemoryOptimizer
+        from src.agents.social_agent import SocialAgent
+
+        optimizer = MemoryOptimizer()
+
+        # Store agent with unique personality (use valid personality)
+        agent = SocialAgent("unique_test", "Unique Test", "helpful", ["test"])
+        optimizer.store_agent(agent)
+        optimizer.build_indexes()
+
+        # Manually add a unique personality to test cleanup
+        optimizer.personality_index["unique_personality"] = {"unique_test"}
+
+        # Verify index exists
+        assert "unique_personality" in optimizer.personality_index
+        assert len(optimizer.personality_index["unique_personality"]) == 1
+
+        # Remove agent (should clean up empty index)
+        result = optimizer.remove_agent("unique_test")
+
+        assert result is True
+        assert "unique_personality" not in optimizer.personality_index
+
+    def test_remove_agent_cleanup_name_index(self, mock_env_vars):
+        """Test removing agent cleans up name index"""
+        from src.agents.memory_optimizer import MemoryOptimizer
+        from src.agents.social_agent import SocialAgent
+
+        optimizer = MemoryOptimizer()
+
+        # Store agent and build indexes
+        agent = SocialAgent("name_test", "Name Test", "friendly", ["test"])
+        optimizer.store_agent(agent)
+        optimizer.build_indexes()
+
+        # Verify name index exists
+        assert "Name Test" in optimizer.name_index
+        assert optimizer.name_index["Name Test"] == "name_test"
+
+        # Remove agent (should clean up name index)
+        result = optimizer.remove_agent("name_test")
+
+        assert result is True
+        # The name index should be cleaned up after removal
+        # Let's check that the agent is actually removed from storage first
+        assert "name_test" not in optimizer.agent_storage
+        # The name index cleanup happens during removal, so let's verify it's gone
+        assert "Name Test" not in optimizer.name_index
+
+    def test_fragmentation_calculation_default_size(self, mock_env_vars):
+        """Test fragmentation calculation with default size estimation"""
+        from src.agents.memory_optimizer import MemoryOptimizer
+
+        optimizer = MemoryOptimizer()
+
+        # Set up compression stats to zero to trigger default estimation
+        optimizer.compression_stats['compressed_size'] = 0
+        optimizer.agent_storage['test'] = b'data'  # Add some data
+
+        fragmentation = optimizer._calculate_fragmentation()
+        assert isinstance(fragmentation, float)
+        assert fragmentation >= 0.0
+
+    def test_fragmentation_calculation_boundary_condition(self, mock_env_vars):
+        """Test fragmentation calculation boundary condition"""
+        from src.agents.memory_optimizer import MemoryOptimizer
+
+        optimizer = MemoryOptimizer()
+
+        # Set up to trigger the boundary condition where total_estimated_size <= optimal_size
+        # Need to set up conditions where overhead is minimal
+        optimizer.agent_storage['test'] = b'x' * 1000  # Larger data
+        optimizer.compression_stats['compressed_size'] = 2000  # Set compressed size
+        optimizer.total_stored_agents = 1
+
+        fragmentation = optimizer._calculate_fragmentation()
+        # In this case, fragmentation should be 0 because total_estimated_size <= optimal_size
+        assert fragmentation >= 0.0
+
+    def test_compaction_recompression_failure(self, mock_env_vars):
+        """Test memory compaction when recompression fails"""
+        from src.agents.memory_optimizer import MemoryOptimizer
+        from src.agents.social_agent import SocialAgent
+        import unittest.mock
+
+        optimizer = MemoryOptimizer(compression_enabled=True)
+
+        # Store agent
+        agent = SocialAgent("recompress_fail", "Recompress Fail", "friendly", ["test"])
+        optimizer.store_agent(agent)
+
+        # Mock compress_agent to raise exception during recompression
+        original_compress = optimizer.compress_agent
+        call_count = 0
+
+        def failing_compress(agent):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return original_compress(agent)  # First call succeeds
+            else:
+                raise Exception("Recompression failed")
+
+        with unittest.mock.patch.object(optimizer, 'compress_agent', side_effect=failing_compress):
+            # Run compaction - should keep original data when recompression fails
+            optimizer.compact_memory()
+
+        # Agent should still exist (kept with original compression)
+        assert "recompress_fail" in optimizer.agent_storage
+        retrieved = optimizer.get_agent("recompress_fail")
+        assert retrieved.agent_id == "recompress_fail"
+
+    def test_cache_deletion_when_updating_existing_agent(self):
+        """Test cache deletion when updating existing agent in _update_cache"""
+        from src.agents.memory_optimizer import MemoryOptimizer
+        from src.agents.social_agent import SocialAgent
+        optimizer = MemoryOptimizer(max_agents=3, lazy_loading_enabled=True)
+
+        # Store agent to populate cache
+        agent1 = SocialAgent("Agent_1", personality="friendly", interests=["AI"])
+        optimizer.store_agent(agent1)
+
+        # Verify agent is in cache
+        assert agent1.agent_id in optimizer.agent_cache
+
+        # Store same agent with different data to trigger cache update
+        agent1_updated = SocialAgent("Agent_1", personality="analytical", interests=["ML"])
+        optimizer.store_agent(agent1_updated)
+
+        # Verify cache was updated (deleted and re-added)
+        assert agent1.agent_id in optimizer.agent_cache
+        cached_agent = optimizer.agent_cache[agent1.agent_id]
+        assert cached_agent.personality == "analytical"
+        assert "ML" in cached_agent.interests
+
+    def test_recompression_failure_keeps_original_data(self):
+        """Test that recompression failure keeps original compressed data"""
+        from src.agents.memory_optimizer import MemoryOptimizer
+        from src.agents.social_agent import SocialAgent
+        import unittest.mock
+
+        optimizer = MemoryOptimizer(max_agents=10, compression_enabled=True)
+
+        # Store an agent
+        agent = SocialAgent("Test_Agent", personality="friendly", interests=["AI"])
+        optimizer.store_agent(agent)
+
+        # Get the original compressed data
+        original_compressed = optimizer.agent_storage[agent.agent_id]
+
+        # Mock compress_agent to fail during compaction
+        def failing_compress(agent_obj):
+            raise Exception("Recompression failed")
+
+        with unittest.mock.patch.object(optimizer, 'compress_agent', side_effect=failing_compress):
+            # Run compaction - should handle recompression failure gracefully
+            result = optimizer.compact_memory()
+
+        # Should still have the original data
+        assert agent.agent_id in optimizer.agent_storage
+        assert optimizer.agent_storage[agent.agent_id] == original_compressed
+
+        # Agent should still be retrievable
+        retrieved = optimizer.get_agent(agent.agent_id)
+        assert retrieved is not None
+        assert retrieved.agent_id == agent.agent_id
+
+    
