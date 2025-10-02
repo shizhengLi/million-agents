@@ -1,4 +1,4 @@
-camel-ai>=0.2.0
+camel-ai
 openai>=1.0.0
 python-dotenv>=1.0.0
 pytest>=8.0.0

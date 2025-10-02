@@ -5,7 +5,10 @@ Social agent class for million agents social application
 from typing import List, Dict, Any, Set, Optional
 import time
 import openai
-from src.config import Settings
+try:
+    from src.config import Settings
+except ImportError:
+    from config import Settings
 from .base import BaseAgent
 
 

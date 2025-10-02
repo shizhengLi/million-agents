@@ -43,14 +43,26 @@ def mock_env_vars():
 @pytest.fixture
 def missing_env_vars():
     """Test environment with missing required variables"""
+    import dotenv
+
     original_env = os.environ.copy()
 
-    # Clear environment variables
-    required_vars = ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL']
-    for var in required_vars:
-        os.environ.pop(var, None)
+    # Clear all environment variables
+    os.environ.clear()
+
+    # Ensure .env file is not loaded during this test
+    # Temporarily rename .env file if it exists
+    env_file_path = Path(__file__).parent.parent / '.env'
+    temp_env_path = None
+    if env_file_path.exists():
+        temp_env_path = env_file_path.with_suffix('.env.tmp')
+        env_file_path.rename(temp_env_path)
 
     yield
+
+    # Restore .env file if it was renamed
+    if temp_env_path and temp_env_path.exists():
+        temp_env_path.rename(env_file_path)
 
     # Restore original environment
     os.environ.clear()

@@ -8,12 +8,21 @@ import sys
 
 # Add src to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-src_path = os.path.join(parent_dir, 'src')
+src_path = os.path.join(current_dir, '..', 'src')
 sys.path.insert(0, src_path)
 
-from src.agents import SocialAgent
-from src.config import Settings
+try:
+    from src.agents import SocialAgent
+    from src.config import Settings
+except ImportError:
+    # Try direct imports
+    import sys
+    import os
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(project_root, 'src'))
+
+    from agents import SocialAgent
+    from config import Settings
 
 
 def main():
