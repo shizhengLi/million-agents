@@ -221,7 +221,8 @@ class TestRole:
         assert restored.name == role.name
         assert restored.description == role.description
         assert len(restored.permissions) == 1
-        assert restored.permissions[0].name == perm.name
+        restored_perm = list(restored.permissions)[0]
+        assert restored_perm.name == perm.name
 
 
 class TestUser:
@@ -386,7 +387,8 @@ class TestUser:
         assert restored.full_name == user.full_name
         assert restored.department == user.department
         assert len(restored.roles) == 1
-        assert restored.roles[0].name == role.name
+        restored_role = list(restored.roles)[0]
+        assert restored_role.name == role.name
 
 
 class TestRBACManager:
@@ -410,7 +412,7 @@ class TestRBACManager:
         assert isinstance(perm, Permission)
         assert perm.name == "read:users"
         assert perm.description == "读取用户信息"
-        assert perm in rbac_manager.permissions
+        assert perm in rbac_manager.permissions.values()
 
     def test_create_duplicate_permission(self, rbac_manager):
         """测试创建重复权限"""
@@ -435,10 +437,10 @@ class TestRBACManager:
     def test_delete_permission(self, rbac_manager):
         """测试删除权限"""
         perm = rbac_manager.create_permission("read:users", "读取用户信息")
-        assert perm in rbac_manager.permissions
+        assert perm in rbac_manager.permissions.values()
 
         rbac_manager.delete_permission("read:users")
-        assert perm not in rbac_manager.permissions
+        assert perm not in rbac_manager.permissions.values()
 
     def test_delete_nonexistent_permission(self, rbac_manager):
         """测试删除不存在的权限"""
@@ -452,7 +454,7 @@ class TestRBACManager:
         assert isinstance(role, Role)
         assert role.name == "admin"
         assert role.description == "系统管理员"
-        assert role in rbac_manager.roles
+        assert role in rbac_manager.roles.values()
 
     def test_create_duplicate_role(self, rbac_manager):
         """测试创建重复角色"""
@@ -477,10 +479,10 @@ class TestRBACManager:
     def test_delete_role(self, rbac_manager):
         """测试删除角色"""
         role = rbac_manager.create_role("admin", "系统管理员")
-        assert role in rbac_manager.roles
+        assert role in rbac_manager.roles.values()
 
         rbac_manager.delete_role("admin")
-        assert role not in rbac_manager.roles
+        assert role not in rbac_manager.roles.values()
 
     def test_delete_nonexistent_role(self, rbac_manager):
         """测试删除不存在的角色"""
@@ -529,7 +531,7 @@ class TestRBACManager:
         assert isinstance(user, User)
         assert user.user_id == "testuser"
         assert user.email == "test@example.com"
-        assert user in rbac_manager.users
+        assert user in rbac_manager.users.values()
 
     def test_create_duplicate_user(self, rbac_manager):
         """测试创建重复用户"""
@@ -554,10 +556,10 @@ class TestRBACManager:
     def test_delete_user(self, rbac_manager):
         """测试删除用户"""
         user = rbac_manager.create_user("testuser", "test@example.com")
-        assert user in rbac_manager.users
+        assert user in rbac_manager.users.values()
 
         rbac_manager.delete_user("testuser")
-        assert user not in rbac_manager.users
+        assert user not in rbac_manager.users.values()
 
     def test_delete_nonexistent_user(self, rbac_manager):
         """测试删除不存在的用户"""
@@ -757,7 +759,7 @@ class TestRBACManager:
 
         rbac_manager.delete_role("admin")
         assert not user.has_role("admin")
-        assert role not in rbac_manager.roles
+        assert role not in rbac_manager.roles.values()
 
     def test_role_hierarchy_check(self, rbac_manager):
         """测试角色层次检查"""
