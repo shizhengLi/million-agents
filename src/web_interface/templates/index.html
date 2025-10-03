@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Million Agents Web Interface</title>
+    <meta name="description" content="百万级智能体社交网络管理界面">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Million Agents</h1>
+            <p>百万级智能体社交网络管理界面</p>
+            <nav>
+                <ul>
+                    <li><a href="#dashboard" class="active">仪表板</a></li>
+                    <li><a href="#agents">智能体管理</a></li>
+                    <li><a href="#network">网络可视化</a></li>
+                    <li><a href="#metrics">系统指标</a></li>
+                    <li><a href="/docs" target="_blank">API文档</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <div class="container">
+            <!-- 消息提示 -->
+            <div id="success-message" class="alert alert-success" style="display: none;"></div>
+            <div id="error-message" class="alert alert-error" style="display: none;"></div>
+
+            <!-- 加载状态 -->
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>加载中...</p>
+            </div>
+
+            <!-- 仪表板部分 -->
+            <section id="dashboard">
+                <div class="section-header">
+                    <h2>系统概览</h2>
+                    <p>智能体社交网络核心指标</p>
+                </div>
+                <div class="section-content">
+                    <div class="dashboard">
+                        <div class="stat-card">
+                            <h3>总智能体数</h3>
+                            <div class="number" id="total-agents">-</div>
+                            <div class="label">已注册智能体</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>活跃智能体</h3>
+                            <div class="number" id="active-agents">-</div>
+                            <div class="label">当前在线</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>平均声誉分数</h3>
+                            <div class="number" id="avg-reputation">-</div>
+                            <div class="label">系统整体声誉</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>网络连接</h3>
+                            <div class="number" id="network-connections">-</div>
+                            <div class="label">社交关系总数</div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <h3>系统状态</h3>
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <span class="status-indicator status-active"></span>
+                                <span>智能体服务运行正常</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-indicator status-active"></span>
+                                <span>声誉引擎运行正常</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-indicator status-active"></span>
+                                <span>社交网络服务运行正常</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 智能体管理部分 -->
+            <section id="agents" style="display: none;">
+                <div class="section-header">
+                    <h2>智能体管理</h2>
+                    <p>管理和监控所有智能体</p>
+                </div>
+                <div class="section-content">
+                    <div class="agent-controls">
+                        <div class="search-filter">
+                            <input type="text" id="search-input" placeholder="搜索智能体...">
+                            <select id="filter-select">
+                                <option value="">全部智能体</option>
+                                <option value="active">活跃智能体</option>
+                                <option value="inactive">非活跃智能体</option>
+                                <option value="high-reputation">高声誉 (>80)</option>
+                                <option value="social">社交型</option>
+                                <option value="content">内容型</option>
+                                <option value="hybrid">混合型</option>
+                            </select>
+                        </div>
+                        <button id="create-agent-btn" class="btn btn-primary">创建智能体</button>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="agent-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>名称</th>
+                                    <th>状态</th>
+                                    <th>声誉分数</th>
+                                    <th>类型</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="agent-table-body">
+                                <tr>
+                                    <td colspan="6" class="text-center">加载中...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 网络可视化部分 -->
+            <section id="network" style="display: none;">
+                <div class="section-header">
+                    <h2>社交网络可视化</h2>
+                    <p>智能体之间的社交关系网络</p>
+                </div>
+                <div class="section-content">
+                    <div class="network-container">
+                        <canvas id="network-canvas"></canvas>
+                        <div class="network-controls">
+                            <button id="refresh-network" class="btn btn-secondary btn-sm">刷新网络</button>
+                            <button id="reset-zoom" class="btn btn-secondary btn-sm">重置缩放</button>
+                        </div>
+                    </div>
+                    <div id="network-metrics" class="network-info">
+                        <!-- 网络指标将在这里显示 -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- 系统指标部分 -->
+            <section id="metrics" style="display: none;">
+                <div class="section-header">
+                    <h2>系统指标</h2>
+                    <p>详细的系统性能和统计指标</p>
+                </div>
+                <div class="section-content">
+                    <div id="detailed-metrics">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>加载指标数据中...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- 智能体创建/编辑模态框 -->
+    <div id="agent-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">创建智能体</h3>
+                <button class="close">&times;</button>
+            </div>
+            <form id="agent-form">
+                <input type="hidden" id="agent-id" data-agent-id="">
+
+                <div class="form-group">
+                    <label for="agent-name">智能体名称 *</label>
+                    <input type="text" id="agent-name" name="name" required maxlength="100">
+                </div>
+
+                <div class="form-group">
+                    <label for="agent-type">智能体类型 *</label>
+                    <select id="agent-type" name="type" required>
+                        <option value="">请选择类型</option>
+                        <option value="social">社交型智能体</option>
+                        <option value="content">内容型智能体</option>
+                        <option value="hybrid">混合型智能体</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="agent-status">状态</label>
+                    <select id="agent-status" name="status">
+                        <option value="active">活跃</option>
+                        <option value="inactive">非活跃</option>
+                        <option value="suspended">暂停</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="agent-description">描述</label>
+                    <textarea id="agent-description" name="description" placeholder="智能体功能描述..." maxlength="500"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary">保存</button>
+                    <button type="button" class="btn btn-secondary" onclick="hideModal()">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+    <script>
+        // 页面加载完成后初始化WebSocket
+        document.addEventListener('DOMContentLoaded', function() {
+            // 延迟初始化WebSocket，避免与页面加载冲突
+            setTimeout(function() {
+                if (typeof initializeWebSocket === 'function') {
+                    initializeWebSocket();
+                }
+            }, 2000);
+        });
+    </script>
+</body>
+</html>

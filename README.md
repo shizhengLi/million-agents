@@ -59,3 +59,28 @@ million-agents/
 - [ ] 社交网络功能
 - [ ] 百万级扩展
 - [ ] 测试覆盖
+
+## 使用
+
+```
+
+现在你可以重新运行启动脚本：
+
+  python run_web_interface.py
+
+  这将不会再显示警告，服务器会正常启动在 http://localhost:8000。
+
+  其他启动选项：
+
+  # 使用简化启动脚本
+  python start_web.py
+
+  # 强制使用简单模式（静态文件演示）
+  python run_web_interface.py --simple
+
+  # 查看帮助
+  python run_web_interface.py --help
+
+  现在Web界面应该可以正常启动了！🚀
+
+```
