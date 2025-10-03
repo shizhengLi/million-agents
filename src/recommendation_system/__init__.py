@@ -7,21 +7,25 @@
 from .collaborative_filtering import CollaborativeFilteringEngine
 from .content_based import ContentBasedEngine
 from .social_recommendation import SocialRecommendationEngine
+from .hybrid_recommendation import HybridRecommendationEngine
 from .models import (
     UserItemMatrix,
     RecommendationResult,
     UserProfile,
-    ContentFeature
+    ContentFeature,
+    RecommendationItem
 )
 
 __all__ = [
     "CollaborativeFilteringEngine",
     "ContentBasedEngine",
     "SocialRecommendationEngine",
+    "HybridRecommendationEngine",
     "UserItemMatrix",
     "RecommendationResult",
     "UserProfile",
-    "ContentFeature"
+    "ContentFeature",
+    "RecommendationItem"
 ]
 
 __version__ = "1.0.0"
