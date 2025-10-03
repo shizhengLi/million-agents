@@ -199,7 +199,7 @@ async def demo_async_streaming_interactions():
 
     # Mock OpenAI for streaming demo
     import unittest.mock
-    with unittest.mock.patch('src.agents.async_manager.SocialAgent.generate_message') as mock_generate:
+    with unittest.mock.patch('agents.async_social_agent.AsyncSocialAgent.generate_message') as mock_generate:
         mock_generate.side_effect = [
             f"流式响应 {i+1}: 这是一个实时的异步响应消息。"
             for i in range(30)

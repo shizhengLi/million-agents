@@ -65,6 +65,25 @@ class AsyncSocialAgent(SocialAgent):
         self.logger = logging.getLogger(f"{__name__}.{self.agent_id}")
         self._generation_cache = {}
         self._rate_limiter = asyncio.Semaphore(5)  # Limit concurrent API calls
+        self._api_available = True  # Track API availability
+
+        # Test API availability on initialization
+        asyncio.create_task(self._test_api_availability())
+
+    async def _test_api_availability(self):
+        """Test if the API is available and mark availability status"""
+        try:
+            # Quick test with minimal request
+            await self.openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=1
+            )
+            self._api_available = True
+            self.logger.info("API is available")
+        except Exception as e:
+            self._api_available = False
+            self.logger.warning(f"API not available, using local messages: {e}")
 
     async def generate_message_async(
         self,
@@ -100,6 +119,20 @@ class AsyncSocialAgent(SocialAgent):
             )
 
         async with self._rate_limiter:
+            # Check API availability first
+            if not self._api_available:
+                # Use local fallback immediately if API is not available
+                processing_time = time.time() - start_time
+                fallback_message = self._generate_fallback_message(context)
+                return AsyncInteraction(
+                    agent_id=self.agent_id,
+                    message=fallback_message,
+                    context=context,
+                    timestamp=time.time(),
+                    processing_time=processing_time,
+                    error="API unavailable, using local fallback"
+                )
+
             try:
                 # Create prompt based on agent personality and context
                 prompt = self._create_async_prompt(context)
@@ -142,16 +175,16 @@ class AsyncSocialAgent(SocialAgent):
                 self.logger.error(f"Failed to generate async message for {self.agent_id}: {e}")
                 processing_time = time.time() - start_time
 
-                # Fallback to sync method if async fails
+                # Fallback to local message generation if async fails
                 try:
-                    fallback_message = self.generate_message(context)
+                    fallback_message = self._generate_fallback_message(context)
                     return AsyncInteraction(
                         agent_id=self.agent_id,
                         message=fallback_message,
                         context=context,
                         timestamp=time.time(),
                         processing_time=processing_time,
-                        error=f"Async failed, used fallback: {str(e)}"
+                        error=f"Async API failed, used local fallback: {str(e)}"
                     )
                 except Exception as fallback_error:
                     return AsyncInteraction(
@@ -160,7 +193,7 @@ class AsyncSocialAgent(SocialAgent):
                         context=context,
                         timestamp=time.time(),
                         processing_time=processing_time,
-                        error=f"Both async and sync failed: {str(fallback_error)}"
+                        error=f"Both async and fallback failed: {str(fallback_error)}"
                     )
 
     def _create_async_prompt(self, context: str) -> str:
