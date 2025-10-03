@@ -823,3 +823,449 @@ class TestDistributedCache:
         assert 'operations_per_second' in performance
         assert 'average_response_time' in performance
         assert 'memory_efficiency' in performance
+
+
+class TestCacheEntryAdvanced:
+    """测试缓存条目的高级功能"""
+
+    def test_cache_entry_update_ttl(self):
+        """测试更新TTL功能"""
+        entry = CacheEntry(
+            key="test_key",
+            value="test_value",
+            ttl_seconds=60
+        )
+
+        original_expiry = entry.expires_at
+        time.sleep(0.1)  # 确保时间差
+
+        entry.update_ttl(120)
+        assert entry.ttl_seconds == 120
+        assert entry.expires_at > original_expiry
+
+    def test_cache_entry_increment_version(self):
+        """测试版本号递增"""
+        entry = CacheEntry(
+            key="test_key",
+            value="test_value"
+        )
+
+        original_version = entry.version
+        new_version = entry.increment_version()
+        assert new_version == original_version + 1
+        assert entry.version == new_version
+
+    def test_cache_entry_from_dict(self):
+        """测试从字典创建缓存条目"""
+        data = {
+            "key": "test_key",
+            "value": {"nested": "data"},
+            "ttl_seconds": 60,
+            "version": 2,
+            "created_at": time.time(),
+            "expires_at": time.time() + 60,
+            "access_count": 5,
+            "last_accessed": time.time(),
+            "metadata": {"custom": "field"}
+        }
+
+        entry = CacheEntry.from_dict(data)
+        assert entry.key == "test_key"
+        assert entry.value == {"nested": "data"}
+        assert entry.ttl_seconds == 60
+        assert entry.version == 2
+        assert entry.access_count == 5
+        assert entry.metadata == {"custom": "field"}
+
+
+class TestCacheNodeAdvanced:
+    """测试缓存节点的高级功能"""
+
+    def test_cache_node_memory_pressure_eviction(self):
+        """测试内存压力下的LRU淘汰"""
+        # 创建一个内存限制很小的节点
+        node = CacheNode(
+            id="test_node",
+            max_memory=1024,  # 1KB
+            max_entries=5
+        )
+
+        # 添加大量条目触发淘汰
+        large_entries = []
+        for i in range(10):
+            # 创建足够大的条目来触发内存限制
+            large_value = "x" * 200  # 200字符
+            entry = CacheEntry(
+                key=f"key_{i}",
+                value=large_value,
+                ttl_seconds=300
+            )
+            large_entries.append(entry)
+            node.put(f"key_{i}", entry)
+
+        # 验证最旧的条目被淘汰
+        assert len(node.storage) <= 5
+        assert "key_0" not in node.storage  # 最旧的应该被淘汰
+        assert "key_9" in node.storage  # 最新的应该保留
+
+    def test_cache_node_concurrent_access(self):
+        """测试并发访问"""
+        node = CacheNode(id="test_node")
+
+        def worker(worker_id):
+            for i in range(10):
+                key = f"worker_{worker_id}_key_{i}"
+                value = f"worker_{worker_id}_value_{i}"
+                entry = CacheEntry(key=key, value=value)
+                node.put(key, entry)
+                retrieved = node.get(key)
+                assert retrieved == value
+
+        # 创建多个线程并发访问
+        threads = []
+        for i in range(5):
+            thread = threading.Thread(target=worker, args=(i,))
+            threads.append(thread)
+            thread.start()
+
+        # 等待所有线程完成
+        for thread in threads:
+            thread.join()
+
+        # 验证所有数据都正确存储
+        assert len(node.storage) == 50  # 5 workers * 10 entries each
+
+    def test_cache_node_edge_cases(self):
+        """测试边界情况"""
+        node = CacheNode(id="test_node")
+
+        # 测试空值处理
+        entry = CacheEntry(key="null_key", value=None)
+        node.put("null_key", entry)
+        assert node.get("null_key") is None
+
+        # 测试空字符串键
+        entry = CacheEntry(key="", value="empty_key_value")
+        node.put("", entry)
+        assert node.get("") == "empty_key_value"
+
+        # 测试特殊字符键
+        special_key = "key_with_special_chars_!@#$%^&*()"
+        entry = CacheEntry(key=special_key, value="special_value")
+        node.put(special_key, entry)
+        assert node.get(special_key) == "special_value"
+
+
+class TestCacheConsistencyAdvanced:
+    """测试缓存一致性的高级功能"""
+
+    def test_conflict_resolution_version_wins_complex(self):
+        """测试版本冲突解决的复杂情况"""
+        consistency = CacheConsistency(ConsistencyLevel.STRONG)
+        consistency.set_conflict_resolver(ConflictResolution.VERSION_WINS)
+
+        # 创建多个不同版本的条目
+        entries = [
+            CacheEntry(key="test_key", value="v1", version=1),
+            CacheEntry(key="test_key", value="v2", version=3),
+            CacheEntry(key="test_key", value="v3", version=2),
+        ]
+
+        resolved = consistency.resolve_conflict(*entries)
+        assert resolved.value == "v2"  # 版本号最高的应该获胜
+        assert resolved.version == 3
+
+    def test_conflict_resolution_custom_merge(self):
+        """测试自定义合并策略"""
+        consistency = CacheConsistency()
+        consistency.conflict_resolver = ConflictResolution.CUSTOM_MERGE
+
+        # 创建多个条目
+        entries = [
+            CacheEntry(key="test_key", value={"count": 1}),
+            CacheEntry(key="test_key", value={"count": 2}),
+        ]
+
+        resolved = consistency.resolve_conflict(*entries)
+        # 自定义合并应该返回第一个条目（默认实现）
+        assert resolved.value["count"] == 1
+
+    def test_operation_propagation_with_failures(self):
+        """测试操作传播时的故障处理"""
+        consistency = CacheConsistency()
+
+        # 创建模拟节点，其中一个会失败
+        node1 = Mock()
+        node1.id = "node1"
+        node1.apply_operation = AsyncMock(return_value=True)
+
+        node2 = Mock()
+        node2.id = "node2"
+        node2.apply_operation = AsyncMock(side_effect=Exception("Node failure"))
+
+        node3 = Mock()
+        node3.id = "node3"
+        node3.apply_operation = AsyncMock(return_value=True)
+
+        operation = CacheOperation(
+            operation_type="SET",
+            key="test_key",
+            value="test_value",
+            node_id="source_node"
+        )
+
+        # 传播操作应该处理部分失败
+        results = asyncio.run(consistency.propagate_operation_to_nodes(
+            operation, [node1, node2, node3]
+        ))
+
+        # 应该有成功和失败的结果
+        assert len(results) == 3
+        assert results[0] is True  # node1 成功
+        assert results[1] is False  # node2 失败
+        assert results[2] is True  # node3 成功
+
+
+class TestCacheReplicationAdvanced:
+    """测试缓存复制的高级功能"""
+
+    def test_replication_with_unhealthy_nodes(self):
+        """测试包含不健康节点的复制"""
+        replication = CacheReplication(replication_factor=2)
+
+        # 创建节点，其中一些是不健康的
+        healthy_nodes = []
+        for i in range(5):
+            node = Mock()
+            node.id = f"node_{i}"
+            node.status = "active" if i < 3 else "inactive"
+            node.apply_operation = Mock(return_value=True)
+            healthy_nodes.append(node)
+
+        # 选择复制节点应该只选择健康节点
+        selected = replication.select_replication_nodes(
+            "test_key", healthy_nodes[:3], "source_node"
+        )
+
+        # 应该选择足够的健康节点
+        assert len(selected) <= min(2, 2)  # 最多2个，且不超过健康节点数
+
+    def test_replication_factor_edge_cases(self):
+        """测试复制因子的边界情况"""
+        # 测试复制因子为0（会被调整为1）
+        replication = CacheReplication(replication_factor=0)
+        assert replication.replication_factor == 1  # 最小值为1
+
+        # 测试复制因子大于可用节点数
+        replication = CacheReplication(replication_factor=10)
+        node_ids = [f"node_{i}" for i in range(3)]
+
+        selected = replication.select_replication_nodes(
+            "test_key", node_ids, "node_0"  # source_node是第一个节点
+        )
+        # 最多选择可用节点数（排除源节点后剩下2个）
+        assert len(selected) <= 2
+
+
+class TestCachePartitioningAdvanced:
+    """测试缓存分区的高级功能"""
+
+    def test_partition_rebalance_with_failed_nodes(self):
+        """测试包含故障节点的重新平衡"""
+        partitioning = CachePartitioning(partition_count=16)
+
+        # 添加初始节点并分配分区
+        initial_nodes = [f"node_{i}" for i in range(4)]
+        for i, node_id in enumerate(initial_nodes):
+            for partition in range(partitioning.partition_count):
+                if partition % len(initial_nodes) == i:
+                    partitioning.assign_node_to_partition(node_id, partition)
+
+        # 模拟一些节点故障
+        failed_nodes = ["node_1", "node_3"]
+        active_nodes = ["node_0", "node_2"]
+
+        # 重新平衡
+        migration_plan = partitioning.rebalance(failed_nodes, active_nodes)
+
+        # 应该有迁移计划
+        assert isinstance(migration_plan, dict)
+        # 只应该包含活跃节点
+        for partition, node_id in migration_plan.items():
+            assert node_id in active_nodes
+
+    def test_consistent_hashing_distribution(self):
+        """测试一致性哈希的分布均匀性"""
+        partitioning = CachePartitioning(partition_count=100)
+        partitioning.partition_strategy = "consistent_hash"
+
+        # 添加多个节点并分配分区
+        nodes = [f"node_{i}" for i in range(10)]
+        for i, node_id in enumerate(nodes):
+            for partition in range(partitioning.partition_count):
+                if partition % len(nodes) == i:
+                    partitioning.assign_node_to_partition(node_id, partition)
+
+        # 测试大量键的分布
+        key_distribution = {node_id: 0 for node_id in nodes}
+
+        empty_count = 0
+        for i in range(1000):
+            key = f"test_key_{i}"
+            nodes = partitioning.get_nodes_for_key(key)
+            if not nodes:
+                empty_count += 1
+                continue
+            primary_node = list(nodes)[0] if nodes else None
+            if primary_node in key_distribution:
+                key_distribution[primary_node] += 1
+
+        # 验证分布相对均匀（允许一定偏差）
+        total_keys = sum(key_distribution.values())
+        actual_nodes = [node_id for node_id, count in key_distribution.items() if count > 0]
+        expected_per_node = total_keys / len(actual_nodes)
+
+        for node_id, count in key_distribution.items():
+            # 允许50%的偏差（因为分区可能分布不均）
+            assert count >= expected_per_node * 0.5
+            assert count <= expected_per_node * 1.5
+
+
+class TestDistributedCacheEdgeCases:
+    """测试分布式缓存的边界情况"""
+
+    def test_cache_with_extreme_values(self):
+        """测试极端值的缓存处理"""
+        cache = DistributedCache("cluster", "test_node")
+
+        # 测试非常大的值
+        large_value = "x" * 1000000  # 1MB的字符串
+        result = cache.set("large_key", large_value)
+        assert result is True
+
+        retrieved = cache.get("large_key")
+        assert retrieved == large_value
+
+        # 测试Unicode字符
+        unicode_value = "测试🚀Unicode内容"
+        result = cache.set("unicode_key", unicode_value)
+        assert result is True
+
+        retrieved = cache.get("unicode_key")
+        assert retrieved == unicode_value
+
+    def test_cache_with_complex_data_structures(self):
+        """测试复杂数据结构的缓存"""
+        cache = DistributedCache("cluster", "test_node")
+
+        # 测试嵌套字典
+        complex_dict = {
+            "level1": {
+                "level2": {
+                    "level3": [1, 2, 3, {"nested": "value"}]
+                }
+            },
+            "array": [{"item": i} for i in range(10)]
+        }
+
+        cache.set("complex_dict", complex_dict)
+        retrieved = cache.get("complex_dict")
+        assert retrieved == complex_dict
+
+        # 测试自定义对象
+        class CustomObject:
+            def __init__(self, value):
+                self.value = value
+                self.timestamp = time.time()
+
+            def __eq__(self, other):
+                return isinstance(other, CustomObject) and self.value == other.value
+
+        custom_obj = CustomObject("test_value")
+        cache.set("custom_obj", custom_obj)
+        retrieved = cache.get("custom_obj")
+        assert retrieved.value == custom_obj.value
+
+    def test_cache_concurrent_stress_test(self):
+        """测试高并发压力"""
+        cache = DistributedCache("cluster", "test_node")
+
+        def stress_worker(worker_id):
+            results = []
+            for i in range(100):
+                key = f"worker_{worker_id}_key_{i}"
+                value = f"worker_{worker_id}_value_{i}"
+
+                # 写入
+                set_result = cache.set(key, value)
+                results.append(('set', key, set_result))
+
+                # 读取
+                get_result = cache.get(key)
+                results.append(('get', key, get_result == value))
+
+            return results
+
+        # 启动多个并发工作线程
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(stress_worker, i) for i in range(10)]
+            all_results = []
+            for future in concurrent.futures.as_completed(futures):
+                all_results.extend(future.result())
+
+        # 验证所有操作都成功
+        set_operations = [r for r in all_results if r[0] == 'set']
+        get_operations = [r for r in all_results if r[0] == 'get']
+
+        assert all(r[2] for r in set_operations)  # 所有set操作成功
+        assert all(r[2] for r in get_operations)  # 所有get操作成功
+
+        # 验证数据一致性
+        final_stats = cache.get_metrics()
+        assert final_stats['hit_count'] >= 900  # 至少大部分get命中
+        assert final_stats['total_operations'] >= 2000  # 至少执行了2000个操作
+
+    def test_cache_persistence_edge_cases(self):
+        """测试持久化的边界情况"""
+        cache = DistributedCache("cluster", "test_node", enable_persistence=True)
+
+        # 测试空缓存的持久化
+        empty_data = cache.save_to_dict()
+        assert isinstance(empty_data, dict)
+
+        # 测试大量数据的持久化
+        for i in range(1000):
+            cache.set(f"persist_key_{i}", f"persist_value_{i}")
+
+        data = cache.save_to_dict()
+        assert 'storage' in data
+        assert len(data['storage']) == 1000
+
+        # 测试从保存的数据加载
+        new_cache = DistributedCache.load_from_dict(data)
+        assert new_cache.get("persist_key_0") == "persist_value_0"
+        assert new_cache.get("persist_key_999") == "persist_value_999"
+        assert new_cache.get("nonexistent_key") is None
+
+    def test_cache_health_monitoring_under_stress(self):
+        """测试压力下的健康监控"""
+        cache = DistributedCache("cluster", "test_node")
+
+        # 执行大量操作
+        for i in range(500):
+            cache.set(f"stress_key_{i}", f"stress_value_{i}")
+            if i % 2 == 0:
+                cache.get(f"stress_key_{i}")
+
+        # 检查健康状态
+        health = cache.check_node_health()
+        assert health['is_healthy'] is True
+        assert health['cache_size'] == 500
+        assert health['hit_rate'] >= 0.5  # 至少50%命中率
+
+        # 检查性能指标
+        performance = cache.get_performance_metrics()
+        assert performance['total_operations'] >= 750  # 500 sets + 250 gets
+        assert performance['operations_per_second'] > 0
+        assert performance['memory_efficiency'] > 0
