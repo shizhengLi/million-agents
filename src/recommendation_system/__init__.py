@@ -5,6 +5,8 @@
 """
 
 from .collaborative_filtering import CollaborativeFilteringEngine
+from .content_based import ContentBasedEngine
+from .social_recommendation import SocialRecommendationEngine
 from .models import (
     UserItemMatrix,
     RecommendationResult,
@@ -14,6 +16,8 @@ from .models import (
 
 __all__ = [
     "CollaborativeFilteringEngine",
+    "ContentBasedEngine",
+    "SocialRecommendationEngine",
     "UserItemMatrix",
     "RecommendationResult",
     "UserProfile",

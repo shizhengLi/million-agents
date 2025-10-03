@@ -385,6 +385,252 @@ class TestCollaborativeFilteringEngine:
         with pytest.raises(ValueError, match="评分必须在1.0-5.0范围内"):
             self.cf_engine.build_user_item_matrix(interactions)
 
+    def test_build_user_similarity_matrix_invalid_method(self):
+        """测试构建用户相似度矩阵 - 无效方法"""
+        # Given
+        interactions = [
+            ("user1", "item1", 5.0),
+            ("user2", "item1", 4.0)
+        ]
+        matrix = self.cf_engine.build_user_item_matrix(interactions)
+
+        # When & Then
+        with pytest.raises(ValueError, match="不支持的相似度计算方法"):
+            self.cf_engine.build_user_similarity_matrix(matrix, method="invalid")
+
+    def test_cosine_similarity_zero_vectors(self):
+        """测试余弦相似度 - 零向量"""
+        # Given
+        vector_a = np.array([0.0, 0.0, 0.0])
+        vector_b = np.array([1.0, 2.0, 3.0])
+
+        # When
+        similarity = self.cf_engine._calculate_cosine_similarity(vector_a, vector_b)
+
+        # Then
+        assert similarity == 0.0
+
+    def test_pearson_correlation_single_common_point(self):
+        """测试皮尔逊相关系数 - 单个共同点"""
+        # Given
+        vector_a = np.array([1.0, 0.0, 0.0])
+        vector_b = np.array([2.0, 0.0, 0.0])
+
+        # When
+        correlation = self.cf_engine._calculate_pearson_correlation(vector_a, vector_b)
+
+        # Then
+        assert correlation == 0.0  # 少于2个共同点，返回0
+
+    def test_pearson_correlation_zero_variance(self):
+        """测试皮尔逊相关系数 - 零方差"""
+        # Given
+        vector_a = np.array([2.0, 2.0, 2.0])  # 无方差
+        vector_b = np.array([1.0, 2.0, 3.0])
+
+        # When
+        correlation = self.cf_engine._calculate_pearson_correlation(vector_a, vector_b)
+
+        # Then
+        assert correlation == 0.0
+
+    def test_find_similar_users_no_matrix_built(self):
+        """测试查找相似用户 - 矩阵未构建"""
+        # Given
+        interactions = [("user1", "item1", 5.0)]
+        self.cf_engine.build_user_item_matrix(interactions)
+        # 故意不构建相似度矩阵
+
+        # When & Then
+        with pytest.raises(ValueError, match="用户相似度矩阵未构建"):
+            self.cf_engine.find_similar_users("user1", k=5)
+
+    def test_find_similar_users_no_user_item_matrix(self):
+        """测试查找相似用户 - 用户物品矩阵未构建"""
+        # Given & When & Then
+        with pytest.raises(ValueError, match="用户-物品矩阵未构建"):
+            self.cf_engine.find_similar_users("user1", k=5)
+
+    def test_generate_recommendations_no_matrix(self):
+        """测试推荐生成 - 矩阵未构建"""
+        # Given & When & Then
+        with pytest.raises(ValueError, match="用户-物品矩阵未构建"):
+            self.cf_engine.generate_recommendations("user1", method="user_based")
+
+    def test_generate_recommendations_nonexistent_user(self):
+        """测试推荐生成 - 不存在的用户"""
+        # Given
+        interactions = [("user1", "item1", 5.0)]
+        matrix = self.cf_engine.build_user_item_matrix(interactions)
+
+        # When & Then
+        with pytest.raises(ValueError, match="用户 nonexistent 不存在"):
+            self.cf_engine.generate_recommendations("nonexistent", method="user_based")
+
+    def test_generate_user_based_recommendations_no_similar_users(self):
+        """测试基于用户推荐 - 无相似用户"""
+        # Given
+        interactions = [("user1", "item1", 5.0)]
+        matrix = self.cf_engine.build_user_item_matrix(interactions)
+        self.cf_engine.build_user_similarity_matrix(matrix)
+
+        # When
+        recommendations = self.cf_engine._generate_user_based_recommendations("user1", k=5)
+
+        # Then
+        assert len(recommendations.items) == 0
+        assert recommendations.method == "user_based"
+
+    def test_generate_item_based_recommendations_no_rated_items(self):
+        """测试基于物品推荐 - 无已评分物品"""
+        # Given
+        interactions = [("user1", "item1", 5.0)]
+        matrix = self.cf_engine.build_user_item_matrix(interactions)
+        # 清空用户评分
+        matrix.data[0, 0] = 0.0
+
+        # When
+        recommendations = self.cf_engine._generate_item_based_recommendations("user1", k=5)
+
+        # Then
+        assert len(recommendations.items) == 0
+
+    def test_find_similar_items_no_matrix(self):
+        """测试查找相似物品 - 矩阵未构建"""
+        # Given & When
+        similar_items = self.cf_engine._find_similar_items("item1", k=5)
+
+        # Then
+        assert len(similar_items) == 0
+
+    def test_get_engine_stats_uninitialized(self):
+        """测试引擎统计 - 未初始化状态"""
+        # Given & When
+        stats = self.cf_engine.get_engine_stats()
+
+        # Then
+        assert stats["status"] == "未初始化"
+
+    def test_get_engine_stats_initialized(self):
+        """测试引擎统计 - 已初始化状态"""
+        # Given
+        interactions = [
+            ("user1", "item1", 5.0),
+            ("user1", "item2", 3.0),
+            ("user2", "item1", 4.0)
+        ]
+        matrix = self.cf_engine.build_user_item_matrix(interactions)
+        self.cf_engine.build_user_similarity_matrix(matrix)
+
+        # When
+        stats = self.cf_engine.get_engine_stats()
+
+        # Then
+        assert stats["status"] == "已初始化"
+        assert stats["num_users"] == 2
+        assert stats["num_items"] == 2
+        assert stats["total_interactions"] == 3
+        assert stats["similarity_matrix_built"] is True
+        assert stats["cache_size"] == 0
+
+    def test_build_user_similarity_matrix_pearson_method(self):
+        """测试构建用户相似度矩阵 - 皮尔逊方法"""
+        # Given
+        interactions = [
+            ("user1", "item1", 5.0),
+            ("user1", "item2", 3.0),
+            ("user2", "item1", 4.0),
+            ("user2", "item2", 4.0)
+        ]
+        matrix = self.cf_engine.build_user_item_matrix(interactions)
+
+        # When
+        similarity_matrix = self.cf_engine.build_user_similarity_matrix(matrix, method="pearson")
+
+        # Then
+        assert similarity_matrix.shape == (2, 2)
+        assert np.allclose(similarity_matrix, similarity_matrix.T)  # 对称矩阵
+        assert np.allclose(np.diag(similarity_matrix), 1.0)  # 对角线为1
+
+    def test_item_based_recommendation_deduplication(self):
+        """测试基于物品推荐 - 去重逻辑"""
+        # Given
+        interactions = [
+            ("user1", "item1", 5.0),
+            ("user1", "item2", 4.0)
+        ]
+        matrix = self.cf_engine.build_user_item_matrix(interactions)
+
+        # When
+        recommendations = self.cf_engine._generate_item_based_recommendations("user1", k=10)
+
+        # Then - 确保没有重复推荐
+        item_ids = [item.item_id for item in recommendations.items]
+        assert len(item_ids) == len(set(item_ids))  # 无重复
+
+    def test_cosine_similarity_nonzero_common_mask(self):
+        """测试余弦相似度 - 有共同评分的非零向量"""
+        # Given
+        vector_a = np.array([1.0, 2.0, 0.0])
+        vector_b = np.array([0.0, 2.0, 3.0])
+
+        # When
+        similarity = self.cf_engine._calculate_cosine_similarity(vector_a, vector_b)
+
+        # Then - 应该基于共同的非零元素计算相似度
+        assert 0.0 <= similarity <= 1.0
+
+    def test_pearson_correlation_nonzero_common_mask(self):
+        """测试皮尔逊相关系数 - 非零共同向量"""
+        # Given
+        vector_a = np.array([1.0, 2.0, 3.0, 0.0])
+        vector_b = np.array([2.0, 4.0, 6.0, 0.0])
+
+        # When
+        correlation = self.cf_engine._calculate_pearson_correlation(vector_a, vector_b)
+
+        # Then
+        assert abs(correlation - 1.0) < 1e-6  # 完全正相关
+
+    def test_generate_user_based_recommendations_skip_negative_similarity(self):
+        """测试基于用户推荐 - 跳过负相似度用户"""
+        # Given
+        interactions = [
+            ("user1", "item1", 5.0),
+            ("user1", "item2", 3.0),
+            ("user2", "item1", 1.0),  # 负相似度用户
+            ("user2", "item3", 2.0)
+        ]
+        matrix = self.cf_engine.build_user_item_matrix(interactions)
+        self.cf_engine.build_user_similarity_matrix(matrix)
+
+        # When
+        recommendations = self.cf_engine._generate_user_based_recommendations("user1", k=5)
+
+        # Then - 应该跳过负相似度用户
+        assert isinstance(recommendations, RecommendationResult)
+
+    def test_generate_item_based_recommendations_with_existing_items(self):
+        """测试基于物品推荐 - 处理已存在的物品"""
+        # Given
+        interactions = [
+            ("user1", "item1", 5.0),
+            ("user1", "item2", 4.0),
+            ("user2", "item1", 3.0),
+            ("user2", "item3", 4.0)
+        ]
+        matrix = self.cf_engine.build_user_item_matrix(interactions)
+
+        # When
+        recommendations = self.cf_engine._generate_item_based_recommendations("user1", k=5)
+
+        # Then - 应该正确处理相似物品和去重
+        assert isinstance(recommendations, RecommendationResult)
+        # 检查推荐的物品不包含用户已评分的物品
+        recommended_items = {item.item_id for item in recommendations.items}
+        user_rated_items = set(matrix.get_user_rated_items("user1"))
+        assert recommended_items.isdisjoint(user_rated_items)
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
