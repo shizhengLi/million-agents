@@ -20,10 +20,54 @@ import logging
 # from src.reputation_system.reputation_engine import ReputationEngine
 from .mock_services import MockAgentService, MockSocialNetworkService
 
+# 导入消息传播模型
+from src.message_propagation.viral_propagation import ViralPropagationModel
+from src.message_propagation.information_diffusion import InformationDiffusionModel
+from src.message_propagation.influence_maximization import InfluenceMaximization
+from src.message_propagation.propagation_tracker import PropagationTracker
+from src.message_propagation.social_network import SocialNetwork as BaseSocialNetwork
+
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class SimpleSocialNetwork(BaseSocialNetwork):
+    """简单的社交网络实现类，用于Web API"""
+
+    def __init__(self):
+        self.agents: Dict[str, Dict[str, Any]] = {}
+        self.connections: Dict[str, List[tuple]] = {}
+
+    def add_agent(self, agent_id: str, agent_data: Optional[Dict[str, Any]] = None):
+        """添加智能体到网络"""
+        self.agents[agent_id] = agent_data or {}
+        if agent_id not in self.connections:
+            self.connections[agent_id] = []
+
+    def add_connection(self, source_id: str, target_id: str, weight: float = 1.0):
+        """添加连接关系"""
+        if source_id in self.connections and target_id in self.agents:
+            self.connections[source_id].append((target_id, weight))
+
+    def get_neighbors(self, agent_id: str) -> List[str]:
+        """获取智能体的邻居"""
+        if agent_id in self.connections:
+            return [neighbor for neighbor, _ in self.connections[agent_id]]
+        return []
+
+    def get_agent_count(self) -> int:
+        """获取网络中智能体总数"""
+        return len(self.agents)
+
+    def get_all_agents(self) -> List[str]:
+        """获取所有智能体ID"""
+        return list(self.agents.keys())
+
+    def get_agent(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """获取智能体信息"""
+        return self.agents.get(agent_id)
 
 
 class AgentCreateRequest(BaseModel):
@@ -95,6 +139,58 @@ class SystemStatsResponse(BaseModel):
     social_network: Dict[str, Any]
     reputation_system: Dict[str, Any]
     timestamp: datetime
+
+
+# 消息传播相关数据模型
+class PropagationRequest(BaseModel):
+    """传播请求模型"""
+    message: str = Field(..., min_length=1, max_length=1000, description="传播消息内容")
+    seed_agents: List[str] = Field(..., min_length=1, description="种子智能体ID列表")
+    model_type: str = Field(..., description="传播模型: viral, diffusion, hybrid")
+    parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="模型参数")
+    max_steps: Optional[int] = Field(100, description="最大传播步数")
+
+
+class PropagationResponse(BaseModel):
+    """传播响应模型"""
+    session_id: str
+    status: str
+    message: str
+    model_type: str
+    seed_agents: List[str]
+    influenced_agents: List[str]
+    propagation_steps: int
+    statistics: Dict[str, Any]
+    created_at: datetime
+
+
+class InfluenceMaximizationRequest(BaseModel):
+    """影响力最大化请求模型"""
+    network_data: Optional[Dict[str, Any]] = Field(None, description="网络数据")
+    seed_count: int = Field(..., ge=1, le=100, description="种子数量")
+    algorithm: str = Field("greedy", description="算法: greedy, degree, celf")
+    model_parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="传播模型参数")
+
+
+class InfluenceMaximizationResponse(BaseModel):
+    """影响力最大化响应模型"""
+    optimal_seeds: List[str]
+    expected_influence: int
+    algorithm_used: str
+    computation_time: float
+    network_stats: Dict[str, Any]
+
+
+class NetworkMetricsResponse(BaseModel):
+    """网络指标响应模型"""
+    node_count: int
+    edge_count: int
+    average_degree: float
+    clustering_coefficient: float
+    average_path_length: float
+    network_density: float
+    connected_components: int
+    largest_component_size: int
 
 
 class ConnectionManager:
@@ -187,10 +283,279 @@ class SocialNetworkService:
         return await self.mock_service.get_network_stats()
 
 
+class MessagePropagationService:
+    """消息传播服务类"""
+
+    def __init__(self):
+        # 延迟初始化传播模型，在需要时创建
+        self.viral_model = None
+        self.diffusion_model = None
+        self.influence_maximizer = None
+        self.propagation_tracker = None
+        self.active_sessions: Dict[str, Dict[str, Any]] = {}
+
+    def _initialize_models(self, social_network: BaseSocialNetwork):
+        """初始化传播模型"""
+        if self.viral_model is None:
+            self.viral_model = ViralPropagationModel(social_network)
+        if self.diffusion_model is None:
+            self.diffusion_model = InformationDiffusionModel(social_network)
+        if self.influence_maximizer is None:
+            self.influence_maximizer = InfluenceMaximization(social_network)
+        if self.propagation_tracker is None:
+            self.propagation_tracker = PropagationTracker(social_network)
+
+    async def start_propagation(self, request: PropagationRequest) -> PropagationResponse:
+        """启动消息传播"""
+        import uuid
+
+        session_id = str(uuid.uuid4())
+
+        # 验证种子智能体是否存在
+        agents = await agent_service.get_all_agents()
+        agent_ids = [agent['id'] for agent in agents]
+
+        invalid_seeds = [seed for seed in request.seed_agents if seed not in agent_ids]
+        if invalid_seeds:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid seed agents: {invalid_seeds}"
+            )
+
+        # 创建社交网络
+        social_network = SimpleSocialNetwork()
+        for agent in agents:
+            social_network.add_agent(agent['id'])
+
+        # 添加连接关系
+        for agent in agents:
+            connections = await social_network_service.get_agent_connections(agent['id'])
+            for conn in connections:
+                social_network.add_connection(agent['id'], conn['target_id'], conn.get('strength', 1.0))
+
+        # 初始化传播模型
+        self._initialize_models(social_network)
+
+        # 选择传播模型
+        if request.model_type == "viral":
+            model = self.viral_model
+        elif request.model_type == "diffusion":
+            model = self.diffusion_model
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid model type. Must be 'viral' or 'diffusion'"
+            )
+
+        # 设置传播参数
+        parameters = request.parameters.copy()
+        if request.model_type == "viral":
+            model.infection_probability = parameters.get('infection_probability', 0.1)
+            model.recovery_probability = parameters.get('recovery_probability', 0.05)
+        elif request.model_type == "diffusion":
+            model.adoption_probability = parameters.get('adoption_probability', 0.1)
+            model.threshold = parameters.get('threshold', 0.3)
+
+        # 设置种子智能体
+        if request.model_type == "viral":
+            model.set_initial_infected(request.seed_agents)
+        else:
+            model.set_initial_adopters(request.seed_agents)
+
+        # 执行传播
+        influenced_agents = []
+        propagation_steps = 0
+
+        try:
+            if request.model_type == "viral":
+                for step in range(request.max_steps):
+                    model.propagate_step()
+                    propagation_steps = step + 1
+                    current_infected = list(model.infected_agents)
+                    if len(current_infected) == len(influenced_agents):
+                        break  # 传播结束
+                    influenced_agents = current_infected
+            else:
+                for step in range(request.max_steps):
+                    model.diffuse_step()
+                    propagation_steps = step + 1
+                    current_adopted = list(model.adopted_agents)
+                    if len(current_adopted) == len(influenced_agents):
+                        break  # 传播结束
+                    influenced_agents = current_adopted
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Propagation simulation failed: {str(e)}"
+            )
+
+        # 计算传播统计
+        statistics = {
+            "total_influenced": len(influenced_agents),
+            "seed_count": len(request.seed_agents),
+            "propagation_ratio": len(influenced_agents) / len(agents) if agents else 0,
+            "propagation_steps": propagation_steps,
+            "model_parameters": parameters
+        }
+
+        # 保存会话信息
+        session_data = {
+            "session_id": session_id,
+            "request": request.dict(),
+            "result": {
+                "influenced_agents": influenced_agents,
+                "propagation_steps": propagation_steps,
+                "statistics": statistics
+            },
+            "created_at": datetime.utcnow()
+        }
+        self.active_sessions[session_id] = session_data
+
+        return PropagationResponse(
+            session_id=session_id,
+            status="completed",
+            message="Propagation simulation completed successfully",
+            model_type=request.model_type,
+            seed_agents=request.seed_agents,
+            influenced_agents=influenced_agents,
+            propagation_steps=propagation_steps,
+            statistics=statistics,
+            created_at=datetime.utcnow()
+        )
+
+    async def get_propagation_result(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """获取传播结果"""
+        return self.active_sessions.get(session_id)
+
+    async def get_active_sessions(self) -> List[Dict[str, Any]]:
+        """获取活跃传播会话"""
+        return list(self.active_sessions.values())
+
+    async def calculate_influence_maximization(self, request: InfluenceMaximizationRequest) -> InfluenceMaximizationResponse:
+        """计算影响力最大化"""
+        import time
+
+        start_time = time.time()
+
+        # 获取网络数据
+        if request.network_data:
+            network_data = request.network_data
+        else:
+            network_data = await social_network_service.get_network_data(limit=1000)
+
+        # 创建社交网络
+        social_network = SimpleSocialNetwork()
+
+        # 添加节点
+        for node in network_data.get('nodes', []):
+            social_network.add_agent(node['id'])
+
+        # 添加边
+        for edge in network_data.get('edges', []):
+            social_network.add_connection(edge['source'], edge['target'], edge.get('weight', 1.0))
+
+        # 初始化模型
+        self._initialize_models(social_network)
+
+        # 确保影响力最大化器已正确初始化
+        if self.influence_maximizer is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Influence maximization model failed to initialize"
+            )
+
+        # 设置模型参数
+        model_params = request.model_parameters.copy()
+        self.influence_maximizer.infection_probability = model_params.get('infection_probability', 0.1)
+        self.influence_maximizer.simulation_rounds = model_params.get('simulation_rounds', 100)
+
+        # 选择算法
+        if request.algorithm == "greedy":
+            optimal_seeds = self.influence_maximizer.greedy_algorithm(request.seed_count)
+        elif request.algorithm == "degree":
+            optimal_seeds = self.influence_maximizer.degree_heuristic(request.seed_count)
+        elif request.algorithm == "celf":
+            optimal_seeds = self.influence_maximizer.celf_algorithm(request.seed_count)
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid algorithm. Must be 'greedy', 'degree', or 'celf'"
+            )
+
+        # 估算影响力
+        expected_influence = self.influence_maximizer.estimate_influence(optimal_seeds)
+
+        computation_time = time.time() - start_time
+
+        # 计算网络统计
+        network_stats = {
+            "node_count": len(network_data.get('nodes', [])),
+            "edge_count": len(network_data.get('edges', [])),
+            "average_degree": sum(len(node.get('connections', [])) for node in network_data.get('nodes', [])) / len(network_data.get('nodes', [1])) if network_data.get('nodes') else 0
+        }
+
+        return InfluenceMaximizationResponse(
+            optimal_seeds=optimal_seeds,
+            expected_influence=expected_influence,
+            algorithm_used=request.algorithm,
+            computation_time=computation_time,
+            network_stats=network_stats
+        )
+
+    async def get_network_metrics(self) -> NetworkMetricsResponse:
+        """获取网络指标"""
+        network_data = await social_network_service.get_network_data(limit=1000)
+        nodes = network_data.get('nodes', [])
+        edges = network_data.get('edges', [])
+
+        # 计算基本指标
+        node_count = len(nodes)
+        edge_count = len(edges)
+
+        # 计算平均度数
+        if node_count > 0:
+            average_degree = (2 * edge_count) / node_count
+        else:
+            average_degree = 0
+
+        # 简化的聚类系数计算
+        clustering_coefficient = 0.3  # 模拟值
+
+        # 简化的平均路径长度
+        average_path_length = 3.5  # 模拟值
+
+        # 网络密度
+        max_edges = node_count * (node_count - 1) / 2 if node_count > 1 else 0
+        network_density = edge_count / max_edges if max_edges > 0 else 0
+
+        # 连通分量
+        connected_components = 1  # 简化假设
+        largest_component_size = node_count  # 简化假设
+
+        return NetworkMetricsResponse(
+            node_count=node_count,
+            edge_count=edge_count,
+            average_degree=average_degree,
+            clustering_coefficient=clustering_coefficient,
+            average_path_length=average_path_length,
+            network_density=network_density,
+            connected_components=connected_components,
+            largest_component_size=largest_component_size
+        )
+
+
 # 创建服务实例
 agent_service = AgentService()
 social_network_service = SocialNetworkService()
 connection_manager = ConnectionManager()
+
+# 延迟创建消息传播服务实例
+def get_message_propagation_service():
+    """获取消息传播服务实例"""
+    if not hasattr(get_message_propagation_service, '_instance'):
+        get_message_propagation_service._instance = MessagePropagationService()
+    return get_message_propagation_service._instance
 
 
 def create_app() -> FastAPI:
@@ -217,33 +582,37 @@ def create_app() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def read_root():
-        """根路径，返回主页面"""
-        return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Million Agents Web Interface</title>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <link rel="stylesheet" href="/static/css/style.css">
-        </head>
-        <body>
-            <div class="container">
-                <h1>Million Agents Web Interface</h1>
-                <p>Welcome to the Million-scale Agent Social Network Management Interface</p>
-                <nav>
-                    <ul>
-                        <li><a href="/agents">Agent Management</a></li>
-                        <li><a href="/network">Network Visualization</a></li>
-                        <li><a href="/metrics">System Metrics</a></li>
-                        <li><a href="/docs">API Documentation</a></li>
-                    </ul>
-                </nav>
-            </div>
-            <script src="/static/js/main.js"></script>
-        </body>
-        </html>
-        """
+        """根路径，返回传播仪表板"""
+        try:
+            with open("src/web_interface/static/propagation_dashboard.html", "r", encoding="utf-8") as f:
+                return f.read()
+        except FileNotFoundError:
+            return """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Million Agents Web Interface</title>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+            </head>
+            <body>
+                <div style="text-align: center; margin-top: 100px;">
+                    <h1>Million Agents Web Interface</h1>
+                    <p>正在加载仪表板...</p>
+                    <p><a href="/docs">查看API文档</a></p>
+                </div>
+            </body>
+            </html>
+            """
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    async def get_dashboard():
+        """返回传播仪表板页面"""
+        try:
+            with open("src/web_interface/static/propagation_dashboard.html", "r", encoding="utf-8") as f:
+                return f.read()
+        except FileNotFoundError:
+            return "<h1>仪表板页面未找到</h1>"
 
     @app.get("/health")
     async def health_check():
@@ -329,6 +698,57 @@ def create_app() -> FastAPI:
             "reputation_system": reputation_stats,
             "timestamp": datetime.utcnow()
         }
+
+    # Message Propagation APIs
+    @app.post("/api/propagation/start", response_model=PropagationResponse)
+    async def start_propagation(request: PropagationRequest):
+        """启动消息传播模拟"""
+        try:
+            message_propagation_service = get_message_propagation_service()
+            result = await message_propagation_service.start_propagation(request)
+            return result
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Propagation simulation failed: {str(e)}")
+
+    @app.get("/api/propagation/session/{session_id}")
+    async def get_propagation_session(session_id: str):
+        """获取传播会话结果"""
+        message_propagation_service = get_message_propagation_service()
+        session = await message_propagation_service.get_propagation_result(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Propagation session not found")
+        return session
+
+    @app.get("/api/propagation/sessions")
+    async def get_active_propagation_sessions():
+        """获取所有活跃的传播会话"""
+        message_propagation_service = get_message_propagation_service()
+        sessions = await message_propagation_service.get_active_sessions()
+        return {"sessions": sessions}
+
+    @app.post("/api/influence-maximization", response_model=InfluenceMaximizationResponse)
+    async def calculate_influence_maximization(request: InfluenceMaximizationRequest):
+        """计算影响力最大化"""
+        try:
+            message_propagation_service = get_message_propagation_service()
+            result = await message_propagation_service.calculate_influence_maximization(request)
+            return result
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Influence maximization calculation failed: {str(e)}")
+
+    @app.get("/api/network/metrics", response_model=NetworkMetricsResponse)
+    async def get_network_metrics():
+        """获取网络拓扑指标"""
+        try:
+            message_propagation_service = get_message_propagation_service()
+            metrics = await message_propagation_service.get_network_metrics()
+            return metrics
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to calculate network metrics: {str(e)}")
 
     # WebSocket
     @app.websocket("/ws")
