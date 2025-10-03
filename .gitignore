@@ -3,6 +3,8 @@
 .env.local
 .env.*.local
 
+count_lines.py
+
 # Python
 __pycache__/
 *.py[cod]

@@ -84,3 +84,7 @@ million-agents/
   现在Web界面应该可以正常启动了！🚀
 
 ```
+
+## 代码行数
+python count_lines.py
+有效Python代码行数（排除camel目录）: 32215
