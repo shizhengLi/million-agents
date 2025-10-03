@@ -15,6 +15,12 @@ from .rbac import (
     DuplicateRoleError, DuplicatePermissionError, DuplicateUserError,
     InsufficientPermissionsError
 )
+from .audit_log import (
+    AuditEvent, AuditLog, AuditLogManager, AuditSeverity,
+    AuditCategory, AuditEventType, AuditSearchFilter,
+    AuditStatistics, AuditExporter, AuditImporter,
+    create_audit_event, log_security_event
+)
 
 __all__ = [
     # JWT认证
@@ -40,5 +46,18 @@ __all__ = [
     "DuplicateRoleError",
     "DuplicatePermissionError",
     "DuplicateUserError",
-    "InsufficientPermissionsError"
+    "InsufficientPermissionsError",
+    # 审计日志
+    "AuditEvent",
+    "AuditLog",
+    "AuditLogManager",
+    "AuditSeverity",
+    "AuditCategory",
+    "AuditEventType",
+    "AuditSearchFilter",
+    "AuditStatistics",
+    "AuditExporter",
+    "AuditImporter",
+    "create_audit_event",
+    "log_security_event"
 ]
