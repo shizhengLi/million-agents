@@ -7,12 +7,10 @@
 import sys
 import os
 import asyncio
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from agents.async_manager import AsyncAgentManager
 from agents.social_agent import SocialAgent
-
 
 async def simulate_customer_service():
     """模拟智能客服系统"""
@@ -28,36 +26,20 @@ async def simulate_customer_service():
 
     # 不同类型的客服
     agent_types = [
-        {
-            "type": "技术支持",
-            "personality": "analytical",
-            "skills": ["技术问题", "故障排查"],
-        },
-        {
-            "type": "产品咨询",
-            "personality": "friendly",
-            "skills": ["产品功能", "使用指导"],
-        },
-        {
-            "type": "售后服务",
-            "personality": "helpful",
-            "skills": ["退换货", "投诉处理"],
-        },
-        {
-            "type": "销售咨询",
-            "personality": "casual",
-            "skills": ["价格咨询", "购买建议"],
-        },
+        {"type": "技术支持", "personality": "analytical", "skills": ["技术问题", "故障排查"]},
+        {"type": "产品咨询", "personality": "friendly", "skills": ["产品功能", "使用指导"]},
+        {"type": "售后服务", "personality": "helpful", "skills": ["退换货", "投诉处理"]},
+        {"type": "销售咨询", "personality": "casual", "skills": ["价格咨询", "购买建议"]}
     ]
 
     for i, agent_config in enumerate(agent_types):
         for j in range(5):  # 每种类型5个客服
             agent = SocialAgent(
-                agent_id=f"service_{agent_config['type']}_{j + 1}",
-                name=f"{agent_config['type']}客服{j + 1}",
+                agent_id=f"service_{agent_config['type']}_{j+1}",
+                name=f"{agent_config['type']}客服{j+1}",
                 personality=agent_config["personality"],
                 interests=agent_config["skills"],
-                bio=f"专业{agent_config['type']}客服，擅长{', '.join(agent_config['skills'])}",
+                bio=f"专业{agent_config['type']}客服，擅长{', '.join(agent_config['skills'])}"
             )
             service_agents.append(agent)
 
@@ -65,34 +47,14 @@ async def simulate_customer_service():
 
     # 2. 模拟客户咨询
     customer_inquiries = [
-        {
-            "type": "技术支持",
-            "message": "我的应用无法启动，总是闪退",
-            "priority": "high",
-        },
-        {
-            "type": "产品咨询",
-            "message": "请问这个产品有什么新功能吗？",
-            "priority": "medium",
-        },
-        {
-            "type": "售后服务",
-            "message": "我买的产品有质量问题，想要退货",
-            "priority": "high",
-        },
-        {
-            "type": "销售咨询",
-            "message": "我想了解一下不同版本的价格差异",
-            "priority": "low",
-        },
+        {"type": "技术支持", "message": "我的应用无法启动，总是闪退", "priority": "high"},
+        {"type": "产品咨询", "message": "请问这个产品有什么新功能吗？", "priority": "medium"},
+        {"type": "售后服务", "message": "我买的产品有质量问题，想要退货", "priority": "high"},
+        {"type": "销售咨询", "message": "我想了解一下不同版本的价格差异", "priority": "low"},
         {"type": "技术支持", "message": "如何连接到Wi-Fi网络？", "priority": "medium"},
-        {
-            "type": "产品咨询",
-            "message": "这个产品适合什么人群使用？",
-            "priority": "medium",
-        },
+        {"type": "产品咨询", "message": "这个产品适合什么人群使用？", "priority": "medium"},
         {"type": "售后服务", "message": "收到商品时包装破损了", "priority": "high"},
-        {"type": "销售咨询", "message": "有优惠活动吗？", "priority": "low"},
+        {"type": "销售咨询", "message": "有优惠活动吗？", "priority": "low"}
     ]
 
     print(f"\n💬 接收到 {len(customer_inquiries)} 个客户咨询...")
@@ -103,18 +65,16 @@ async def simulate_customer_service():
     async def assign_service_agent(inquiry):
         """根据咨询类型智能分配客服"""
         suitable_agents = [
-            agent
-            for agent in service_agents
-            if any(
-                skill in inquiry["message"] or skill in agent.interests
-                for skill in agent.interests
-            )
+            agent for agent in service_agents
+            if any(skill in inquiry["message"] or skill in agent.interests
+                   for skill in agent.interests)
         ]
 
         if not suitable_agents:
             # 如果没有完全匹配的，选择类型相近的
             suitable_agents = [
-                agent for agent in service_agents if inquiry["type"] in agent.bio
+                agent for agent in service_agents
+                if inquiry["type"] in agent.bio
             ]
 
         if suitable_agents:
@@ -129,7 +89,7 @@ async def simulate_customer_service():
         """处理单个咨询"""
         response = await asyncio.to_thread(
             agent.generate_message,
-            f"客户咨询: {inquiry['message']}\n请提供专业、友好的回复",
+            f"客户咨询: {inquiry['message']}\n请提供专业、友好的回复"
         )
 
         return {
@@ -137,7 +97,7 @@ async def simulate_customer_service():
             "service_agent": agent.name,
             "agent_type": agent.bio.split("，")[0],
             "response": response,
-            "priority": inquiry["priority"],
+            "priority": inquiry["priority"]
         }
 
     # 并行处理所有咨询
@@ -187,7 +147,6 @@ async def simulate_customer_service():
     print(f"   响应质量: ✅ 个性化专业回复")
 
     return results
-
 
 if __name__ == "__main__":
     asyncio.run(simulate_customer_service())
