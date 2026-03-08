@@ -72,22 +72,31 @@ class SimpleSocialNetwork(BaseSocialNetwork):
 
 class AgentCreateRequest(BaseModel):
     """创建智能体请求模型"""
+
     name: str = Field(..., min_length=1, max_length=100, description="智能体名称")
     type: str = Field(..., description="智能体类型: social, content, hybrid")
     description: Optional[str] = Field(None, max_length=500, description="智能体描述")
-    config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="智能体配置")
+    config: Optional[Dict[str, Any]] = Field(
+        default_factory=dict, description="智能体配置"
+    )
 
 
 class AgentUpdateRequest(BaseModel):
     """更新智能体请求模型"""
-    name: Optional[str] = Field(None, min_length=1, max_length=100, description="智能体名称")
+
+    name: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="智能体名称"
+    )
     description: Optional[str] = Field(None, max_length=500, description="智能体描述")
-    status: Optional[str] = Field(None, description="智能体状态: active, inactive, suspended")
+    status: Optional[str] = Field(
+        None, description="智能体状态: active, inactive, suspended"
+    )
     config: Optional[Dict[str, Any]] = Field(None, description="智能体配置")
 
 
 class AgentResponse(BaseModel):
     """智能体响应模型"""
+
     id: str
     name: str
     type: str
@@ -101,6 +110,7 @@ class AgentResponse(BaseModel):
 
 class NetworkNode(BaseModel):
     """网络节点模型"""
+
     id: str
     name: str
     group: str
@@ -110,6 +120,7 @@ class NetworkNode(BaseModel):
 
 class NetworkEdge(BaseModel):
     """网络边模型"""
+
     source: str
     target: str
     weight: float
@@ -119,6 +130,7 @@ class NetworkEdge(BaseModel):
 
 class NetworkResponse(BaseModel):
     """社交网络响应模型"""
+
     nodes: List[NetworkNode]
     edges: List[NetworkEdge]
     metrics: Dict[str, Any]
@@ -126,6 +138,7 @@ class NetworkResponse(BaseModel):
 
 class ConnectionResponse(BaseModel):
     """连接关系响应模型"""
+
     target_id: str
     target_name: str
     relationship_type: str
@@ -135,6 +148,7 @@ class ConnectionResponse(BaseModel):
 
 class SystemStatsResponse(BaseModel):
     """系统统计响应模型"""
+
     agents: Dict[str, Any]
     social_network: Dict[str, Any]
     reputation_system: Dict[str, Any]
@@ -144,15 +158,19 @@ class SystemStatsResponse(BaseModel):
 # 消息传播相关数据模型
 class PropagationRequest(BaseModel):
     """传播请求模型"""
+
     message: str = Field(..., min_length=1, max_length=1000, description="传播消息内容")
     seed_agents: List[str] = Field(..., min_length=1, description="种子智能体ID列表")
     model_type: str = Field(..., description="传播模型: viral, diffusion, hybrid")
-    parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="模型参数")
+    parameters: Optional[Dict[str, Any]] = Field(
+        default_factory=dict, description="模型参数"
+    )
     max_steps: Optional[int] = Field(100, description="最大传播步数")
 
 
 class PropagationResponse(BaseModel):
     """传播响应模型"""
+
     session_id: str
     status: str
     message: str
@@ -166,14 +184,18 @@ class PropagationResponse(BaseModel):
 
 class InfluenceMaximizationRequest(BaseModel):
     """影响力最大化请求模型"""
+
     network_data: Optional[Dict[str, Any]] = Field(None, description="网络数据")
     seed_count: int = Field(..., ge=1, le=100, description="种子数量")
     algorithm: str = Field("greedy", description="算法: greedy, degree, celf")
-    model_parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="传播模型参数")
+    model_parameters: Optional[Dict[str, Any]] = Field(
+        default_factory=dict, description="传播模型参数"
+    )
 
 
 class InfluenceMaximizationResponse(BaseModel):
     """影响力最大化响应模型"""
+
     optimal_seeds: List[str]
     expected_influence: int
     algorithm_used: str
@@ -183,6 +205,7 @@ class InfluenceMaximizationResponse(BaseModel):
 
 class NetworkMetricsResponse(BaseModel):
     """网络指标响应模型"""
+
     node_count: int
     edge_count: int
     average_degree: float
@@ -223,11 +246,158 @@ class ConnectionManager:
                 self.active_connections.remove(connection)
 
 
+class RealAgentService:
+    """真实智能体服务 - 使用数据库"""
+
+    def __init__(self):
+        import os
+        from dotenv import load_dotenv
+
+        load_dotenv()
+
+        from src.database.session import get_session, create_tables
+        from src.database.agent import Agent
+
+        create_tables()
+
+        self.session = get_session()
+        self.Agent = Agent
+
+    def _agent_to_dict(self, agent: "Agent") -> Dict[str, Any]:
+        """将数据库模型转换为字典"""
+        return {
+            "id": f"agent_{agent.id}",
+            "name": agent.name,
+            "type": agent.personality_type,
+            "status": "active",
+            "reputation_score": 70.0,
+            "description": f"Agent with personality: {agent.personality_type}",
+            "created_at": agent.created_at,
+            "updated_at": agent.updated_at,
+            "last_active": agent.updated_at,
+        }
+
+    async def get_all_agents(self) -> List[Dict[str, Any]]:
+        """获取所有智能体"""
+        agents = self.session.query(self.Agent).all()
+        return [self._agent_to_dict(a) for a in agents]
+
+    async def get_agent_by_id(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """根据ID获取智能体"""
+        try:
+            db_id = int(agent_id.replace("agent_", ""))
+            agent = (
+                self.session.query(self.Agent).filter(self.Agent.id == db_id).first()
+            )
+            if agent:
+                return self._agent_to_dict(agent)
+        except (ValueError, AttributeError):
+            pass
+        return None
+
+    async def create_agent(self, agent_data: Dict[str, Any]) -> Dict[str, Any]:
+        """创建智能体"""
+        new_agent = self.Agent(
+            name=agent_data.get("name", f"Agent"),
+            personality_type=agent_data.get("type", "social"),
+        )
+        self.session.add(new_agent)
+        self.session.commit()
+        self.session.refresh(new_agent)
+        return self._agent_to_dict(new_agent)
+
+    async def update_agent(
+        self, agent_id: str, update_data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """更新智能体"""
+        try:
+            db_id = int(agent_id.replace("agent_", ""))
+            agent = (
+                self.session.query(self.Agent).filter(self.Agent.id == db_id).first()
+            )
+            if agent:
+                if "name" in update_data:
+                    agent.name = update_data["name"]
+                if "description" in update_data:
+                    pass
+                if "status" in update_data:
+                    pass
+                self.session.commit()
+                return self._agent_to_dict(agent)
+        except (ValueError, AttributeError):
+            pass
+        return None
+
+    async def delete_agent(self, agent_id: str) -> bool:
+        """删除智能体"""
+        try:
+            db_id = int(agent_id.replace("agent_", ""))
+            agent = (
+                self.session.query(self.Agent).filter(self.Agent.id == db_id).first()
+            )
+            if agent:
+                self.session.delete(agent)
+                self.session.commit()
+                return True
+        except (ValueError, AttributeError):
+            pass
+        return False
+
+    async def get_agent_stats(self) -> Dict[str, Any]:
+        """获取智能体统计"""
+        total = self.session.query(self.Agent).count()
+        active = total
+
+        type_distribution = {}
+        agents = self.session.query(self.Agent).all()
+        for agent in agents:
+            agent_type = agent.personality_type
+            type_distribution[agent_type] = type_distribution.get(agent_type, 0) + 1
+
+        return {
+            "total_agents": total,
+            "active_agents": active,
+            "inactive_agents": total - active,
+            "agent_types": type_distribution,
+        }
+
+    async def get_reputation_metrics(self) -> Dict[str, Any]:
+        """获取声誉指标"""
+        total = self.session.query(self.Agent).count()
+        if total == 0:
+            return {
+                "total_agents": 0,
+                "active_agents": 0,
+                "average_reputation": 0.0,
+                "reputation_distribution": {"high": 0, "medium": 0, "low": 0},
+                "recent_changes": [],
+            }
+
+        return {
+            "total_agents": total,
+            "active_agents": total,
+            "average_reputation": 70.0,
+            "reputation_distribution": {"high": 0, "medium": total, "low": 0},
+            "recent_changes": [],
+        }
+
+
 class AgentService:
     """智能体服务类"""
 
     def __init__(self):
-        self.mock_service = MockAgentService()
+        import os
+        from dotenv import load_dotenv
+
+        load_dotenv()
+
+        service_mode = os.getenv("SERVICE_MODE", "real")
+
+        if service_mode == "real":
+            self.real_service = RealAgentService()
+            self.mock_service = self.real_service
+        else:
+            self.mock_service = MockAgentService()
 
     async def get_all_agents(self) -> List[Dict[str, Any]]:
         """获取所有智能体"""
@@ -239,14 +409,15 @@ class AgentService:
 
     async def create_agent(self, agent_data: AgentCreateRequest) -> Dict[str, Any]:
         """创建智能体"""
-        # 验证智能体类型
         valid_types = ["social", "content", "hybrid"]
         if agent_data.type not in valid_types:
             raise ValueError(f"Invalid agent type. Must be one of: {valid_types}")
 
         return await self.mock_service.create_agent(agent_data.dict())
 
-    async def update_agent(self, agent_id: str, update_data: AgentUpdateRequest) -> Optional[Dict[str, Any]]:
+    async def update_agent(
+        self, agent_id: str, update_data: AgentUpdateRequest
+    ) -> Optional[Dict[str, Any]]:
         """更新智能体"""
         update_dict = {k: v for k, v in update_data.dict().items() if v is not None}
         return await self.mock_service.update_agent(agent_id, update_dict)
@@ -268,18 +439,82 @@ class SocialNetworkService:
     """社交网络服务类"""
 
     def __init__(self):
-        self.mock_service = MockSocialNetworkService()
+        import os
+        from dotenv import load_dotenv
+
+        load_dotenv()
+
+        service_mode = os.getenv("SERVICE_MODE", "real")
+
+        if service_mode == "real":
+            from src.database.session import get_session
+            from src.database.friendship import Friendship
+
+            self.session = get_session()
+            self.Friendship = Friendship
+            self.use_real = True
+        else:
+            self.mock_service = MockSocialNetworkService()
+            self.use_real = False
 
     async def get_network_data(self, limit: int = 100) -> Dict[str, Any]:
         """获取网络数据"""
+        if self.use_real:
+            friendships = self.session.query(self.Friendship).limit(limit).all()
+            connections = []
+            for f in friendships:
+                connections.append(
+                    {
+                        "source_id": f"agent_{f.initiator_id}",
+                        "target_id": f"agent_{f.recipient_id}",
+                        "strength": f.strength_level,
+                    }
+                )
+            return {"connections": connections}
         return await self.mock_service.get_network_data(limit)
 
     async def get_agent_connections(self, agent_id: str) -> List[Dict[str, Any]]:
         """获取智能体连接"""
+        if self.use_real:
+            try:
+                db_id = int(agent_id.replace("agent_", ""))
+                friendships = (
+                    self.session.query(self.Friendship)
+                    .filter(
+                        (self.Friendship.initiator_id == db_id)
+                        | (self.Friendship.recipient_id == db_id)
+                    )
+                    .all()
+                )
+                connections = []
+                for f in friendships:
+                    if f.initiator_id == db_id:
+                        connections.append(
+                            {
+                                "target_id": f"agent_{f.recipient_id}",
+                                "strength": f.strength_level,
+                            }
+                        )
+                    else:
+                        connections.append(
+                            {
+                                "target_id": f"agent_{f.initiator_id}",
+                                "strength": f.strength_level,
+                            }
+                        )
+                return connections
+            except (ValueError, AttributeError):
+                return []
         return await self.mock_service.get_agent_connections(agent_id)
 
     async def get_network_stats(self) -> Dict[str, Any]:
         """获取网络统计"""
+        if self.use_real:
+            total = self.session.query(self.Friendship).count()
+            return {
+                "total_connections": total,
+                "average_degree": 0.0,
+            }
         return await self.mock_service.get_network_stats()
 
 
@@ -305,7 +540,9 @@ class MessagePropagationService:
         if self.propagation_tracker is None:
             self.propagation_tracker = PropagationTracker(social_network)
 
-    async def start_propagation(self, request: PropagationRequest) -> PropagationResponse:
+    async def start_propagation(
+        self, request: PropagationRequest
+    ) -> PropagationResponse:
         """启动消息传播"""
         import uuid
 
@@ -313,25 +550,28 @@ class MessagePropagationService:
 
         # 验证种子智能体是否存在
         agents = await agent_service.get_all_agents()
-        agent_ids = [agent['id'] for agent in agents]
+        agent_ids = [agent["id"] for agent in agents]
 
         invalid_seeds = [seed for seed in request.seed_agents if seed not in agent_ids]
         if invalid_seeds:
             raise HTTPException(
-                status_code=400,
-                detail=f"Invalid seed agents: {invalid_seeds}"
+                status_code=400, detail=f"Invalid seed agents: {invalid_seeds}"
             )
 
         # 创建社交网络
         social_network = SimpleSocialNetwork()
         for agent in agents:
-            social_network.add_agent(agent['id'])
+            social_network.add_agent(agent["id"])
 
         # 添加连接关系
         for agent in agents:
-            connections = await social_network_service.get_agent_connections(agent['id'])
+            connections = await social_network_service.get_agent_connections(
+                agent["id"]
+            )
             for conn in connections:
-                social_network.add_connection(agent['id'], conn['target_id'], conn.get('strength', 1.0))
+                social_network.add_connection(
+                    agent["id"], conn["target_id"], conn.get("strength", 1.0)
+                )
 
         # 初始化传播模型
         self._initialize_models(social_network)
@@ -344,17 +584,17 @@ class MessagePropagationService:
         else:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid model type. Must be 'viral' or 'diffusion'"
+                detail="Invalid model type. Must be 'viral' or 'diffusion'",
             )
 
         # 设置传播参数
         parameters = request.parameters.copy()
         if request.model_type == "viral":
-            model.infection_probability = parameters.get('infection_probability', 0.1)
-            model.recovery_probability = parameters.get('recovery_probability', 0.05)
+            model.infection_probability = parameters.get("infection_probability", 0.1)
+            model.recovery_probability = parameters.get("recovery_probability", 0.05)
         elif request.model_type == "diffusion":
-            model.adoption_probability = parameters.get('adoption_probability', 0.1)
-            model.threshold = parameters.get('threshold', 0.3)
+            model.adoption_probability = parameters.get("adoption_probability", 0.1)
+            model.threshold = parameters.get("threshold", 0.3)
 
         # 设置种子智能体
         if request.model_type == "viral":
@@ -386,8 +626,7 @@ class MessagePropagationService:
 
         except Exception as e:
             raise HTTPException(
-                status_code=500,
-                detail=f"Propagation simulation failed: {str(e)}"
+                status_code=500, detail=f"Propagation simulation failed: {str(e)}"
             )
 
         # 计算传播统计
@@ -396,7 +635,7 @@ class MessagePropagationService:
             "seed_count": len(request.seed_agents),
             "propagation_ratio": len(influenced_agents) / len(agents) if agents else 0,
             "propagation_steps": propagation_steps,
-            "model_parameters": parameters
+            "model_parameters": parameters,
         }
 
         # 保存会话信息
@@ -406,9 +645,9 @@ class MessagePropagationService:
             "result": {
                 "influenced_agents": influenced_agents,
                 "propagation_steps": propagation_steps,
-                "statistics": statistics
+                "statistics": statistics,
             },
-            "created_at": datetime.utcnow()
+            "created_at": datetime.utcnow(),
         }
         self.active_sessions[session_id] = session_data
 
@@ -421,7 +660,7 @@ class MessagePropagationService:
             influenced_agents=influenced_agents,
             propagation_steps=propagation_steps,
             statistics=statistics,
-            created_at=datetime.utcnow()
+            created_at=datetime.utcnow(),
         )
 
     async def get_propagation_result(self, session_id: str) -> Optional[Dict[str, Any]]:
@@ -432,7 +671,9 @@ class MessagePropagationService:
         """获取活跃传播会话"""
         return list(self.active_sessions.values())
 
-    async def calculate_influence_maximization(self, request: InfluenceMaximizationRequest) -> InfluenceMaximizationResponse:
+    async def calculate_influence_maximization(
+        self, request: InfluenceMaximizationRequest
+    ) -> InfluenceMaximizationResponse:
         """计算影响力最大化"""
         import time
 
@@ -448,12 +689,14 @@ class MessagePropagationService:
         social_network = SimpleSocialNetwork()
 
         # 添加节点
-        for node in network_data.get('nodes', []):
-            social_network.add_agent(node['id'])
+        for node in network_data.get("nodes", []):
+            social_network.add_agent(node["id"])
 
         # 添加边
-        for edge in network_data.get('edges', []):
-            social_network.add_connection(edge['source'], edge['target'], edge.get('weight', 1.0))
+        for edge in network_data.get("edges", []):
+            social_network.add_connection(
+                edge["source"], edge["target"], edge.get("weight", 1.0)
+            )
 
         # 初始化模型
         self._initialize_models(social_network)
@@ -462,25 +705,33 @@ class MessagePropagationService:
         if self.influence_maximizer is None:
             raise HTTPException(
                 status_code=500,
-                detail="Influence maximization model failed to initialize"
+                detail="Influence maximization model failed to initialize",
             )
 
         # 设置模型参数
         model_params = request.model_parameters.copy()
-        self.influence_maximizer.infection_probability = model_params.get('infection_probability', 0.1)
-        self.influence_maximizer.simulation_rounds = model_params.get('simulation_rounds', 100)
+        self.influence_maximizer.infection_probability = model_params.get(
+            "infection_probability", 0.1
+        )
+        self.influence_maximizer.simulation_rounds = model_params.get(
+            "simulation_rounds", 100
+        )
 
         # 选择算法
         if request.algorithm == "greedy":
-            optimal_seeds = self.influence_maximizer.greedy_algorithm(request.seed_count)
+            optimal_seeds = self.influence_maximizer.greedy_algorithm(
+                request.seed_count
+            )
         elif request.algorithm == "degree":
-            optimal_seeds = self.influence_maximizer.degree_heuristic(request.seed_count)
+            optimal_seeds = self.influence_maximizer.degree_heuristic(
+                request.seed_count
+            )
         elif request.algorithm == "celf":
             optimal_seeds = self.influence_maximizer.celf_algorithm(request.seed_count)
         else:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid algorithm. Must be 'greedy', 'degree', or 'celf'"
+                detail="Invalid algorithm. Must be 'greedy', 'degree', or 'celf'",
             )
 
         # 估算影响力
@@ -490,9 +741,15 @@ class MessagePropagationService:
 
         # 计算网络统计
         network_stats = {
-            "node_count": len(network_data.get('nodes', [])),
-            "edge_count": len(network_data.get('edges', [])),
-            "average_degree": sum(len(node.get('connections', [])) for node in network_data.get('nodes', [])) / len(network_data.get('nodes', [1])) if network_data.get('nodes') else 0
+            "node_count": len(network_data.get("nodes", [])),
+            "edge_count": len(network_data.get("edges", [])),
+            "average_degree": sum(
+                len(node.get("connections", []))
+                for node in network_data.get("nodes", [])
+            )
+            / len(network_data.get("nodes", [1]))
+            if network_data.get("nodes")
+            else 0,
         }
 
         return InfluenceMaximizationResponse(
@@ -500,14 +757,14 @@ class MessagePropagationService:
             expected_influence=expected_influence,
             algorithm_used=request.algorithm,
             computation_time=computation_time,
-            network_stats=network_stats
+            network_stats=network_stats,
         )
 
     async def get_network_metrics(self) -> NetworkMetricsResponse:
         """获取网络指标"""
         network_data = await social_network_service.get_network_data(limit=1000)
-        nodes = network_data.get('nodes', [])
-        edges = network_data.get('edges', [])
+        nodes = network_data.get("nodes", [])
+        edges = network_data.get("edges", [])
 
         # 计算基本指标
         node_count = len(nodes)
@@ -541,7 +798,7 @@ class MessagePropagationService:
             average_path_length=average_path_length,
             network_density=network_density,
             connected_components=connected_components,
-            largest_component_size=largest_component_size
+            largest_component_size=largest_component_size,
         )
 
 
@@ -550,10 +807,11 @@ agent_service = AgentService()
 social_network_service = SocialNetworkService()
 connection_manager = ConnectionManager()
 
+
 # 延迟创建消息传播服务实例
 def get_message_propagation_service():
     """获取消息传播服务实例"""
-    if not hasattr(get_message_propagation_service, '_instance'):
+    if not hasattr(get_message_propagation_service, "_instance"):
         get_message_propagation_service._instance = MessagePropagationService()
     return get_message_propagation_service._instance
 
@@ -565,7 +823,7 @@ def create_app() -> FastAPI:
         description="百万级智能体社交网络管理界面",
         version="1.0.0",
         docs_url="/docs",
-        redoc_url="/redoc"
+        redoc_url="/redoc",
     )
 
     # 添加CORS中间件
@@ -578,13 +836,19 @@ def create_app() -> FastAPI:
     )
 
     # 挂载静态文件
-    app.mount("/static", StaticFiles(directory="src/web_interface/static"), name="static")
+    app.mount(
+        "/static", StaticFiles(directory="src/web_interface/static"), name="static"
+    )
 
     @app.get("/", response_class=HTMLResponse)
     async def read_root():
         """根路径，返回传播仪表板"""
         try:
-            with open("src/web_interface/static/propagation_dashboard.html", "r", encoding="utf-8") as f:
+            with open(
+                "src/web_interface/static/propagation_dashboard.html",
+                "r",
+                encoding="utf-8",
+            ) as f:
                 return f.read()
         except FileNotFoundError:
             return """
@@ -609,7 +873,11 @@ def create_app() -> FastAPI:
     async def get_dashboard():
         """返回传播仪表板页面"""
         try:
-            with open("src/web_interface/static/propagation_dashboard.html", "r", encoding="utf-8") as f:
+            with open(
+                "src/web_interface/static/propagation_dashboard.html",
+                "r",
+                encoding="utf-8",
+            ) as f:
                 return f.read()
         except FileNotFoundError:
             return "<h1>仪表板页面未找到</h1>"
@@ -617,11 +885,7 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health_check():
         """健康检查"""
-        return {
-            "status": "healthy",
-            "timestamp": datetime.utcnow(),
-            "version": "1.0.0"
-        }
+        return {"status": "healthy", "timestamp": datetime.utcnow(), "version": "1.0.0"}
 
     # Agent Management APIs
     @app.get("/api/agents", response_model=List[AgentResponse])
@@ -665,7 +929,9 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Agent not found")
         return {"message": "Agent deleted successfully"}
 
-    @app.get("/api/agents/{agent_id}/connections", response_model=List[ConnectionResponse])
+    @app.get(
+        "/api/agents/{agent_id}/connections", response_model=List[ConnectionResponse]
+    )
     async def get_agent_connections(agent_id: str):
         """获取智能体连接"""
         connections = await social_network_service.get_agent_connections(agent_id)
@@ -696,7 +962,7 @@ def create_app() -> FastAPI:
             "agents": agent_stats,
             "social_network": network_stats,
             "reputation_system": reputation_stats,
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utcnow(),
         }
 
     # Message Propagation APIs
@@ -710,7 +976,9 @@ def create_app() -> FastAPI:
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Propagation simulation failed: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Propagation simulation failed: {str(e)}"
+            )
 
     @app.get("/api/propagation/session/{session_id}")
     async def get_propagation_session(session_id: str):
@@ -728,17 +996,24 @@ def create_app() -> FastAPI:
         sessions = await message_propagation_service.get_active_sessions()
         return {"sessions": sessions}
 
-    @app.post("/api/influence-maximization", response_model=InfluenceMaximizationResponse)
+    @app.post(
+        "/api/influence-maximization", response_model=InfluenceMaximizationResponse
+    )
     async def calculate_influence_maximization(request: InfluenceMaximizationRequest):
         """计算影响力最大化"""
         try:
             message_propagation_service = get_message_propagation_service()
-            result = await message_propagation_service.calculate_influence_maximization(request)
+            result = await message_propagation_service.calculate_influence_maximization(
+                request
+            )
             return result
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Influence maximization calculation failed: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Influence maximization calculation failed: {str(e)}",
+            )
 
     @app.get("/api/network/metrics", response_model=NetworkMetricsResponse)
     async def get_network_metrics():
@@ -748,7 +1023,9 @@ def create_app() -> FastAPI:
             metrics = await message_propagation_service.get_network_metrics()
             return metrics
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to calculate network metrics: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to calculate network metrics: {str(e)}"
+            )
 
     # WebSocket
     @app.websocket("/ws")
@@ -774,5 +1051,6 @@ def create_app() -> FastAPI:
 
 if __name__ == "__main__":
     import uvicorn
+
     app = create_app()
     uvicorn.run(app, host="0.0.0.0", port=8000)

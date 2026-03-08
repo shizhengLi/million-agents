@@ -8,6 +8,7 @@ let network = null;
 let propagationChart = null;
 let currentSessionId = null;
 let sessions = [];
+let availableAgents = [];
 
 // API基础URL
 const API_BASE = '/api';
@@ -274,9 +275,17 @@ async function handlePropagationSubmit(event) {
  * 生成种子智能体列表
  */
 function generateSeedAgents(count) {
+    if (!availableAgents || availableAgents.length === 0) {
+        showNotification('没有可用的智能体，请先创建智能体', 'error');
+        return [];
+    }
+    
+    const actualCount = Math.min(count, availableAgents.length);
     const agents = [];
-    for (let i = 1; i <= count; i++) {
-        agents.push(`agent_${i}`);
+    const shuffled = [...availableAgents].sort(() => Math.random() - 0.5);
+    
+    for (let i = 0; i < actualCount; i++) {
+        agents.push(shuffled[i].id);
     }
     return agents;
 }
@@ -535,6 +544,7 @@ async function loadAgents() {
         if (!response.ok) throw new Error('获取智能体数据失败');
 
         const agents = await response.json();
+        availableAgents = agents;
 
         // 更新网络可视化中的节点
         if (network && agents.length > 0) {

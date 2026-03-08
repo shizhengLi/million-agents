@@ -256,10 +256,10 @@ async function editAgent(agentId) {
         if (title) title.textContent = '编辑智能体';
         if (form) {
             form.setAttribute('data-agent-id', agentId);
-            form.getElementById('agent-name').value = agent.name;
-            form.getElementById('agent-type').value = agent.type;
-            form.getElementById('agent-description').value = agent.description || '';
-            form.getElementById('agent-status').value = agent.status;
+            document.getElementById('agent-name').value = agent.name;
+            document.getElementById('agent-type').value = agent.type;
+            document.getElementById('agent-description').value = agent.description || '';
+            document.getElementById('agent-status').value = agent.status;
         }
 
         if (modal) modal.style.display = 'block';
@@ -298,11 +298,14 @@ async function handleAgentFormSubmit(event) {
     const isEdit = agentId && agentId !== '';
 
     const formData = {
-        name: form.getElementById('agent-name').value,
-        type: form.getElementById('agent-type').value,
-        description: form.getElementById('agent-description').value,
-        status: form.getElementById('agent-status').value
+        name: document.getElementById('agent-name').value,
+        type: document.getElementById('agent-type').value,
+        description: document.getElementById('agent-description').value || ''
     };
+
+    if (isEdit) {
+        formData.status = document.getElementById('agent-status').value;
+    }
 
     try {
         if (isEdit) {
@@ -320,7 +323,7 @@ async function handleAgentFormSubmit(event) {
         }
 
         hideModal();
-        await loadAgents(); // 重新加载列表
+        await loadAgents();
 
     } catch (error) {
         showError(`${isEdit ? '更新' : '创建'}智能体失败: ` + error.message);
