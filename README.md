@@ -262,10 +262,10 @@ def simulate_policy_impact():
 
     # 创建不同背景的智能体
     social_groups = {
-        "年轻人": {"count": 1500, "interests": ["科技", "创新", "环保"], "personality": "progressive"},
-        "中年人": {"count": 2000, "interests": ["经济", "家庭", "教育"], "personality": "moderate"},
-        "老年人": {"count": 1000, "interests": ["健康", "传统", "安全"], "personality": "conservative"},
-        "专业人士": {"count": 500, "interests": ["专业", "发展", "政策"], "personality": "analytical"}
+        "年轻人": {"count": 150, "interests": ["科技", "创新", "环保"], "personality": "curious"},
+        "中年人": {"count": 200, "interests": ["经济", "家庭", "教育"], "personality": "casual"},
+        "老年人": {"count": 100, "interests": ["健康", "传统", "安全"], "personality": "formal"},
+        "专业人士": {"count": 50, "interests": ["专业", "发展", "政策"], "personality": "analytical"}
     }
 
     all_agents = []
@@ -274,7 +274,7 @@ def simulate_policy_impact():
             count=config["count"],
             name_prefix=group_name,
             personalities=[config["personality"]],
-            interests=config["interests"]
+            interests_list=[config["interests"]]
         )
         all_agents.extend(agents)
         print(f"   创建了 {len(agents)} 个{group_name}")
@@ -323,66 +323,65 @@ def simulate_policy_impact():
     for policy in policies:
         print(f"\n📢 模拟{policy['name']}传播...")
 
-        diffusion_model = InformationDiffusionModel(social_network)
+        # 根据政策调整采用概率
+        base_prob = 0.3
+        if policy["name"] == "环保税政策":
+            base_prob = 0.25
+        elif policy["name"] == "数字化教育改革":
+            base_prob = 0.35
+        
+        diffusion_model = InformationDiffusionModel(
+            social_network,
+            adoption_probability=base_prob,
+            abandon_probability=0.05,
+            max_time_steps=15
+        )
 
         # 选择不同群体的种子
         seeds = []
         for group in policy["appeal_groups"]:
-            group_agents = [a for a in all_agents if a.personality == social_groups[group]["personality"]]
-            seeds.extend(random.sample(group_agents, min(10, len(group_agents))))
+            group_agents = [
+                a
+                for a in all_agents
+                if a.personality == social_groups[group]["personality"]
+            ]
+            seeds.extend([a.agent_id for a in random.sample(group_agents, min(10, len(group_agents)))])
 
-        # 自定义接受概率
-        def custom_activation_prob(agent_id, neighbor_id, message):
-            agent = next((a for a in all_agents if a.agent_id == agent_id), None)
-            if not agent:
-                return 0.1
+        # 设置初始采用者
+        diffusion_model.set_initial_adopters(seeds)
 
-            # 根据群体类型调整接受概率
-            base_prob = 0.3
-            if agent.personality == "progressive":
-                base_prob = 0.7
-            elif agent.personality == "conservative":
-                base_prob = 0.2
-            elif agent.personality == "moderate":
-                base_prob = 0.4
-            elif agent.personality == "analytical":
-                base_prob = 0.6
+        # 预测扩散
+        diffusion_model.predict_diffusion()
 
-            # 根据兴趣匹配调整
-            if any(interest in policy["message"] for interest in agent.interests):
-                base_prob += 0.2
-
-            return min(base_prob, 0.9)
-
-        diffusion_model.activation_probability = custom_activation_prob
-
-        result = diffusion_model.propagate(
-            message=policy["message"],
-            seed_agents=[a.agent_id for a in seeds],
-            max_steps=15
-        )
-
-        results[policy["name"]] = result
-
+        # 获取统计信息
+        stats = diffusion_model.get_diffusion_statistics()
+        
         # 分析结果
-        acceptance_rate = len(result.influenced_agents) / len(all_agents) * 100
+        acceptance_rate = stats['adoption_rate'] * 100
         print(f"   总接受度: {acceptance_rate:.1f}%")
-        print(f"   传播步数: {result.total_steps}")
+        print(f"   传播步数: {stats['diffusion_steps']}")
 
         # 按群体分析
         group_analysis = {}
         for group_name, config in social_groups.items():
             group_agents = [a.agent_id for a in all_agents if a.personality == config["personality"]]
-            influenced_in_group = len(set(result.influenced_agents) & set(group_agents))
+            influenced_in_group = len(set(diffusion_model.adopted_agents) & set(group_agents))
             group_rate = influenced_in_group / len(group_agents) * 100
             group_analysis[group_name] = group_rate
             print(f"   {group_name}接受度: {group_rate:.1f}%")
+
+        results[policy["name"]] = {
+            'adoption_rate': stats['adoption_rate'],
+            'adopted_agents': diffusion_model.adopted_agents,
+            'total_steps': stats['diffusion_steps'],
+            'stats': stats
+        }
 
     # 5. 政策建议
     print("\n💡 政策实施建议:")
 
     for policy_name, result in results.items():
-        acceptance_rate = len(result.influenced_agents) / len(all_agents) * 100
+        acceptance_rate = result['adoption_rate'] * 100
 
         if acceptance_rate > 60:
             print(f"\n✅ {policy_name}: 高接受度政策")
@@ -425,7 +424,7 @@ async def simulate_customer_service():
 
     # 1. 创建客服智能体
     print("👥 创建客服团队...")
-    manager = AsyncAgentManager(max_agents=100)
+    manager = AsyncAgentManager()
 
     service_agents = []
 
@@ -433,8 +432,8 @@ async def simulate_customer_service():
     agent_types = [
         {"type": "技术支持", "personality": "analytical", "skills": ["技术问题", "故障排查"]},
         {"type": "产品咨询", "personality": "friendly", "skills": ["产品功能", "使用指导"]},
-        {"type": "售后服务", "personality": "empathetic", "skills": ["退换货", "投诉处理"]},
-        {"type": "销售咨询", "personality": "enthusiastic", "skills": ["价格咨询", "购买建议"]}
+        {"type": "售后服务", "personality": "helpful", "skills": ["退换货", "投诉处理"]},
+        {"type": "销售咨询", "personality": "casual", "skills": ["价格咨询", "购买建议"]}
     ]
 
     for i, agent_config in enumerate(agent_types):
@@ -447,7 +446,6 @@ async def simulate_customer_service():
                 bio=f"专业{agent_config['type']}客服，擅长{', '.join(agent_config['skills'])}"
             )
             service_agents.append(agent)
-            await manager.add_agent(agent)
 
     print(f"   创建了 {len(service_agents)} 个客服智能体")
 
@@ -493,7 +491,8 @@ async def simulate_customer_service():
 
     async def process_inquiry(inquiry, agent):
         """处理单个咨询"""
-        response = await agent.generate_message_async(
+        response = await asyncio.to_thread(
+            agent.generate_message,
             f"客户咨询: {inquiry['message']}\n请提供专业、友好的回复"
         )
 
